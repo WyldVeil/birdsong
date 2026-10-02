@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  selftest:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # Exercise the real launchers: they fetch uv, a private Python and the
+      # packages, then run the unit tests and a real BirdNET identification.
+      - name: Self-test via run.sh
+        if: runner.os != 'Windows'
+        run: BIRDSONG_OWN_UV=1 ./run.sh selftest
+
+      - name: Self-test via run.bat
+        if: runner.os == 'Windows'
+        shell: cmd
+        env:
+          BIRDSONG_NOPAUSE: "1"
+        run: run.bat selftest
+
+      - name: Demo server answers
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then L="cmd //c run.bat"; else L="./run.sh"; fi
+          BIRDSONG_NOPAUSE=1 BIRDSONG_OWN_UV=1 $L demo --no-browser --no-photos --port 8099 > demo.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8099/ -o page.html && curl -fsS http://127.0.0.1:8099/api/live -o live.json; then
+              grep -q "<!doctype html>" page.html && grep -q '"online":true' live.json && echo "demo OK" && exit 0
+            fi
+            sleep 2
+          done
+          cat demo.log
+          exit 1

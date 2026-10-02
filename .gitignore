@@ -1,0 +1,10 @@
+# Your data: config (password hash, location), detections, recordings, photos, model
+data/
+data-demo/
+# The private Python environment run.sh / run.bat create
+.runtime/
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db

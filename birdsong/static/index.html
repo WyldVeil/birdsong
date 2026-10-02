@@ -1,0 +1,1264 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0c1210">
+<title>Birdsong</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23e8823e'/%3E%3Cpath d='M18 38c4-10 14-16 24-14l8-6-2 9c2 8-4 17-16 17-6 0-11-2-14-6z' fill='%230c1210'/%3E%3C/svg%3E">
+<style>
+@font-face { font-family: "Fraunces"; src: url("font/fraunces.woff2") format("woff2"); font-weight: 300 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Fraunces"; src: url("font/fraunces-italic.woff2") format("woff2"); font-weight: 300 700; font-style: italic; font-display: swap; }
+
+:root {
+  color-scheme: dark;
+  --bg: #0c1210; --bg-2: #0f1714; --card: #141e1a; --card-2: #1a2621; --card-3: #21302a;
+  --line: rgba(239,233,219,.08); --line-2: rgba(239,233,219,.15);
+  --ink: #efe9db; --ink-2: #bdb7a6; --ink-3: #8a8676;
+  --accent: #ee8a45; --accent-ink: #1a0f06; --gold: #f2c063; --live: #63d69e; --warn: #fab219; --bad: #e66767;
+  --heat-0: #1b2621; --heat-hi: #f2c063;
+  --shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 18px 40px -22px rgba(0,0,0,.7);
+  --radius: 18px;
+  --serif: "Fraunces", ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #f4efe4; --bg-2: #efe8da; --card: #fffcf5; --card-2: #f7f1e5; --card-3: #ece4d3;
+    --line: rgba(29,35,31,.09); --line-2: rgba(29,35,31,.17);
+    --ink: #1d231f; --ink-2: #4d524b; --ink-3: #777a70;
+    --accent: #c4581c; --accent-ink: #fff8f0; --gold: #a86a12; --live: #13894f; --warn: #a86a12; --bad: #c03a3a;
+    --heat-0: #f1eadb; --heat-hi: #b3600f;
+    --shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 16px 34px -24px rgba(60,40,10,.45);
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4efe4; --bg-2: #efe8da; --card: #fffcf5; --card-2: #f7f1e5; --card-3: #ece4d3;
+  --line: rgba(29,35,31,.09); --line-2: rgba(29,35,31,.17);
+  --ink: #1d231f; --ink-2: #4d524b; --ink-3: #777a70;
+  --accent: #c4581c; --accent-ink: #fff8f0; --gold: #a86a12; --live: #13894f; --warn: #a86a12; --bad: #c03a3a;
+  --heat-0: #f1eadb; --heat-hi: #b3600f;
+  --shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 16px 34px -24px rgba(60,40,10,.45);
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased; overflow-x: hidden;
+  background-image:
+    radial-gradient(1200px 500px at 85% -10%, color-mix(in oklab, var(--accent) 9%, transparent), transparent 70%),
+    radial-gradient(900px 500px at -10% 10%, color-mix(in oklab, var(--live) 6%, transparent), transparent 70%);
+  background-repeat: no-repeat;
+}
+a { color: inherit; }
+button, select, input { font: inherit; color: inherit; }
+img { display: block; max-width: 100%; }
+.wrap { max-width: 1260px; margin: 0 auto; padding: 0 20px; }
+@media (max-width: 600px) { .wrap { padding: 0 16px; } }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.serif { font-family: var(--serif); }
+.muted { color: var(--ink-3); }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ---------- top bar ---------- */
+.top { display: flex; align-items: center; gap: 16px; padding: 22px 0 18px; }
+.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; min-width: 0; }
+.brand svg { flex: none; }
+.brand h1 { margin: 0; font: 600 26px/1 var(--serif); letter-spacing: -.01em; font-variation-settings: "opsz" 72; }
+.brand small { display: block; font: 500 11px/1.2 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); margin-top: 5px; }
+.top .spacer { flex: 1; }
+.pill { display: inline-flex; align-items: center; gap: 8px; padding: 7px 13px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); font-size: 13px; white-space: nowrap; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); flex: none; }
+.pill.on .dot { background: var(--live); box-shadow: 0 0 0 0 color-mix(in oklab, var(--live) 60%, transparent); animation: pulse 2s infinite; }
+.pill.off .dot { background: var(--bad); }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--live) 55%, transparent); } 70% { box-shadow: 0 0 0 9px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+.clock { font: 500 13px var(--mono); color: var(--ink-2); }
+.admin-badge { display: none; font-size: 12px; padding: 5px 10px; border-radius: 999px; background: color-mix(in oklab, var(--accent) 20%, transparent); color: var(--accent); border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent); cursor: pointer; }
+body.admin .admin-badge { display: inline-block; }
+@media (max-width: 640px) { .clock { display: none; } .brand h1 { font-size: 22px; } .brand small { display: none; } }
+
+/* ---------- hero ---------- */
+.hero { display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(0, 1fr); gap: 18px; }
+@media (max-width: 900px) { .hero { grid-template-columns: minmax(0, 1fr); } }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.latest { position: relative; overflow: hidden; min-height: 420px; display: flex; flex-direction: column; justify-content: flex-end; cursor: pointer; isolation: isolate; }
+.latest .bgimg { position: absolute; inset: 0; z-index: -2; background: var(--card-2); }
+.latest .bgimg img { width: 100%; height: 100%; object-fit: cover; transform: scale(1.02); transition: transform 1.2s cubic-bezier(.2,.7,.2,1), opacity .6s; }
+.latest:hover .bgimg img { transform: scale(1.06); }
+.latest::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, rgba(8,12,10,.0) 30%, rgba(8,12,10,.55) 62%, rgba(8,12,10,.92) 100%); }
+.latest .body { padding: 26px 28px 24px; color: #f5efe1; }
+.eyebrow { font: 600 11px/1 var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--accent); display: flex; align-items: center; gap: 8px; }
+.latest .eyebrow { color: #ffb27a; }
+.latest h2 { margin: 10px 0 2px; font: 600 clamp(34px, 5vw, 54px)/1.02 var(--serif); letter-spacing: -.015em; font-variation-settings: "opsz" 144; text-wrap: balance; }
+.latest .sci { font: italic 400 18px var(--serif); opacity: .85; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 999px; font-size: 13px; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.14); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); white-space: nowrap; }
+.latest .spec { margin-top: 18px; height: 54px; border-radius: 10px; overflow: hidden; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1); }
+.latest .spec img { width: 100%; height: 100%; object-fit: fill; }
+.latest.empty { cursor: default; background: linear-gradient(160deg, var(--card-2), var(--card)); }
+.latest.empty::after { display: none; }
+.latest.empty .body { color: var(--ink); }
+.latest.empty h2 { font-size: clamp(30px, 4vw, 42px); }
+.wait-art { position: absolute; inset: 0 0 auto 0; height: 62%; display: grid; place-items: center; opacity: .9; }
+.badge { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 6px; font: 600 10.5px/1.3 var(--sans); letter-spacing: .08em; text-transform: uppercase; }
+.badge.unusual { background: color-mix(in oklab, var(--gold) 22%, transparent); color: var(--gold); border: 1px solid color-mix(in oklab, var(--gold) 45%, transparent); }
+.badge.vagrant { background: color-mix(in oklab, var(--bad) 20%, transparent); color: var(--bad); border: 1px solid color-mix(in oklab, var(--bad) 45%, transparent); }
+.badge.new { background: color-mix(in oklab, var(--live) 18%, transparent); color: var(--live); border: 1px solid color-mix(in oklab, var(--live) 40%, transparent); }
+.latest .badge.unusual { color: #ffd27a; }
+
+.listen { padding: 20px 20px 18px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.listen-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.listen-head h3 { margin: 0; font: 600 20px var(--serif); }
+.scope { position: relative; border-radius: 12px; overflow: hidden; background: #0b1418; border: 1px solid rgba(255,255,255,.06); height: 196px; }
+.scope canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: auto; }
+.scope .axis { position: absolute; left: 8px; top: 6px; bottom: 6px; display: flex; flex-direction: column; justify-content: space-between; font: 10px var(--mono); color: rgba(230,240,240,.78); text-shadow: 0 1px 3px #000, 0 0 6px #000; pointer-events: none; }
+.scope .tl { position: absolute; right: 8px; bottom: 6px; font: 10px var(--mono); color: rgba(230,240,240,.78); text-shadow: 0 1px 3px #000, 0 0 6px #000; }
+.scope .offline { position: absolute; inset: 0; display: none; place-items: center; text-align: center; color: #cfd8d4; font-size: 14px; background: rgba(11,20,24,.7); padding: 20px; }
+.scope.is-off .offline { display: grid; }
+.hearing { min-height: 24px; font-size: 14px; color: var(--ink-2); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hearing b { color: var(--ink); font-weight: 600; }
+.wave { display: inline-flex; gap: 2px; align-items: center; height: 14px; }
+.wave i { width: 3px; border-radius: 2px; background: var(--live); animation: wv 1s ease-in-out infinite; }
+.wave i:nth-child(2) { animation-delay: .15s } .wave i:nth-child(3) { animation-delay: .3s } .wave i:nth-child(4) { animation-delay: .45s }
+@keyframes wv { 0%,100% { height: 4px } 50% { height: 14px } }
+.meter { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; font-size: 12px; color: var(--ink-3); }
+.meter .bar { height: 6px; border-radius: 3px; background: var(--card-3); overflow: hidden; }
+.meter .bar i { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--live); transition: width .3s, background-color .3s; }
+.meter .bar i.hot { background: var(--warn); } .meter .bar i.clip { background: var(--bad); }
+.mini { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+.mini div { background: var(--card-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+.mini b { display: block; font: 600 24px/1.1 var(--serif); }
+.mini span { font-size: 12px; color: var(--ink-3); }
+
+/* recent strip */
+.strip { display: flex; gap: 10px; overflow-x: auto; padding: 4px 2px 10px; margin-top: 18px; scrollbar-width: thin; scroll-snap-type: x proximity; }
+.strip:empty { display: none; }
+.rc { flex: none; display: flex; align-items: center; gap: 10px; padding: 7px 14px 7px 7px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); cursor: pointer; scroll-snap-align: start; transition: border-color .2s, transform .2s; }
+.rc:hover { border-color: var(--line-2); transform: translateY(-1px); }
+.rc img, .rc .ph { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; background: var(--card-3); flex: none; }
+.rc b { display: block; font-size: 13.5px; font-weight: 600; white-space: nowrap; }
+.rc span { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.rc.fresh { animation: pop .7s cubic-bezier(.2,.9,.3,1.3); border-color: color-mix(in oklab, var(--accent) 60%, transparent); }
+@keyframes pop { from { transform: scale(.85); opacity: 0 } to { transform: none; opacity: 1 } }
+
+/* ---------- sections ---------- */
+section.blk { margin-top: 56px; }
+.sec-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.sec-head h2 { margin: 0; font: 600 34px/1.05 var(--serif); letter-spacing: -.01em; font-variation-settings: "opsz" 120; }
+.sec-head p { margin: 6px 0 0; color: var(--ink-3); font-size: 14px; }
+.controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.seg { display: inline-flex; padding: 3px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); overflow-x: auto; max-width: 100%; }
+.seg button { border: 0; background: none; padding: 7px 13px; border-radius: 9px; cursor: pointer; color: var(--ink-2); font-size: 13.5px; white-space: nowrap; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); font-weight: 600; }
+.nav { display: inline-flex; align-items: center; gap: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 3px; }
+.nav button { border: 0; background: none; width: 34px; height: 32px; border-radius: 9px; cursor: pointer; display: grid; place-items: center; color: var(--ink-2); }
+.nav button:hover:not(:disabled) { background: var(--card-3); }
+.nav button:disabled { opacity: .3; cursor: default; }
+.nav .lbl { padding: 0 8px; font-size: 13.5px; font-weight: 600; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nav .today { width: auto; padding: 0 10px; font-size: 12.5px; }
+select.sel, input.search { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; font-size: 13.5px; color: var(--ink); }
+input.search { min-width: 0; width: 200px; }
+@media (max-width: 600px) { input.search { width: 100%; } }
+
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; }
+@media (max-width: 900px) { .tiles { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+.tile { padding: 16px 18px; min-width: 0; }
+.tile .k { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+.tile .v { font: 600 36px/1.1 var(--serif); margin-top: 6px; font-variation-settings: "opsz" 96; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile .v.sm { font-size: 22px; line-height: 1.3; margin-top: 10px; }
+.tile .d { font-size: 12.5px; color: var(--ink-3); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.up { color: var(--live); } .down { color: var(--bad); }
+
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin-top: 14px; }
+@media (max-width: 960px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+.panel { padding: 18px 18px 14px; min-width: 0; }
+.panel h3 { margin: 0 0 2px; font: 600 18px var(--serif); }
+.panel .sub { margin: 0 0 12px; font-size: 12.5px; color: var(--ink-3); }
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart .bar { fill: var(--accent); }
+.chart .bar:hover, .chart .bar.hl { fill: var(--gold); }
+.chart .grid line { stroke: var(--line); }
+.chart text { fill: var(--ink-3); font: 11px var(--sans); }
+.empty-note { display: grid; place-items: center; text-align: center; color: var(--ink-3); font-size: 14px; padding: 36px 12px; min-height: 160px; }
+
+.heat { overflow-x: auto; scrollbar-width: thin; }
+.heat table { border-collapse: separate; border-spacing: 2px; width: 100%; }
+.heat td { padding: 0; }
+.heat td.nm { white-space: nowrap; padding-right: 10px; font-size: 13px; cursor: pointer; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.heat td.nm img, .heat td.nm .ph { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; display: inline-block; vertical-align: middle; margin-right: 8px; background: var(--card-3); }
+.heat td.c { height: 22px; min-width: 9px; border-radius: 4px; background: var(--heat-0); }
+.heat td.c:hover { outline: 2px solid var(--ink); outline-offset: -1px; }
+.heat .xl td { font-size: 10px; color: var(--ink-3); text-align: center; padding-top: 4px; }
+.heat .more { font-size: 12.5px; color: var(--ink-3); padding-top: 8px; }
+
+.tip { position: fixed; z-index: 90; pointer-events: none; background: var(--ink); color: var(--bg); padding: 7px 10px; border-radius: 8px; font-size: 12.5px; line-height: 1.35; box-shadow: 0 10px 30px -10px rgba(0,0,0,.5); opacity: 0; transition: opacity .12s; max-width: 260px; }
+.tip.on { opacity: 1; }
+.tip b { font-weight: 700; }
+
+/* ---------- bird cards ---------- */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; }
+@media (max-width: 520px) { .cards { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; } }
+.bird { position: relative; border-radius: 16px; overflow: hidden; background: var(--card-2); border: 1px solid var(--line); aspect-ratio: 4 / 5.2; cursor: pointer; isolation: isolate; box-shadow: var(--shadow); transition: transform .35s cubic-bezier(.2,.7,.2,1), box-shadow .35s; text-align: left; padding: 0; width: 100%; color: #f6f0e2; }
+.bird:hover { transform: translateY(-3px); box-shadow: 0 26px 50px -26px rgba(0,0,0,.75); }
+.bird:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.bird img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; transition: transform .8s cubic-bezier(.2,.7,.2,1), filter .4s; }
+.bird:hover img { transform: scale(1.06); }
+.bird .noimg { position: absolute; inset: 0; z-index: -2; display: grid; place-items: center; background: linear-gradient(160deg, var(--card-3), var(--card-2)); color: var(--ink-3); }
+.bird::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, rgba(6,9,8,.35) 0%, transparent 22%, transparent 45%, rgba(6,9,8,.88) 100%); }
+.bird .rank { position: absolute; top: 10px; left: 10px; font: 600 13px var(--serif); background: rgba(10,14,12,.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); padding: 3px 9px; border-radius: 999px; border: 1px solid rgba(255,255,255,.14); }
+.bird .tb { position: absolute; top: 10px; right: 10px; display: flex; gap: 5px; }
+.bird .tb .badge { backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); background: rgba(10,14,12,.55); }
+.bird .info { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 14px 13px; }
+.bird h4 { margin: 0; font: 600 20px/1.08 var(--serif); letter-spacing: -.005em; text-wrap: balance; }
+.bird .sci { font: italic 13px var(--serif); opacity: .78; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bird .stats { display: flex; justify-content: space-between; gap: 6px; margin-top: 10px; font-size: 12px; opacity: .92; }
+.bird .stats b { font: 600 16px var(--serif); display: block; }
+.bird .meterline { height: 3px; border-radius: 2px; background: rgba(255,255,255,.18); margin-top: 9px; overflow: hidden; }
+.bird .meterline i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--gold)); border-radius: 2px; }
+.bird.unheard { color: var(--ink-2); }
+.bird.unheard img { filter: grayscale(1) brightness(.55) contrast(.9); }
+.bird.unheard:hover img { filter: grayscale(.3) brightness(.75); }
+.bird.unheard .stats { opacity: .7; }
+@media (max-width: 520px) { .bird h4 { font-size: 16.5px; } .bird .info { padding: 10px; } .bird .stats { font-size: 11px; } .bird .stats b { font-size: 14px; } }
+
+.progress { display: flex; align-items: center; gap: 18px; margin-bottom: 18px; flex-wrap: wrap; }
+.ring { width: 76px; height: 76px; flex: none; }
+.progress .t b { font: 600 30px var(--serif); }
+.progress .t span { display: block; color: var(--ink-3); font-size: 13px; }
+
+/* ---------- log ---------- */
+.log { display: flex; flex-direction: column; }
+.row { display: grid; grid-template-columns: 76px 44px minmax(0, 1.2fr) minmax(0, 1.4fr) auto; gap: 14px; align-items: center; padding: 10px 12px; border-top: 1px solid var(--line); }
+.row:first-child { border-top: 0; }
+.row:hover { background: color-mix(in oklab, var(--card-2) 70%, transparent); }
+.row .tm { font: 500 13px var(--mono); color: var(--ink-2); line-height: 1.25; }
+.row .tm small { display: block; font: 11px var(--sans); color: var(--ink-3); }
+.row img.av, .row .av { width: 44px; height: 44px; border-radius: 12px; object-fit: cover; background: var(--card-3); cursor: pointer; }
+.row .nm { min-width: 0; cursor: pointer; }
+.row .nm b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .nm i { font: italic 12.5px var(--serif); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.row .sp { height: 40px; border-radius: 8px; overflow: hidden; background: #0b1418; min-width: 0; }
+.row .sp img { width: 100%; height: 100%; object-fit: fill; }
+.row .sp.none { background: var(--card-2); display: grid; place-items: center; font-size: 11px; color: var(--ink-3); }
+.row .act { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+.conf { font: 600 12px var(--mono); padding: 3px 7px; border-radius: 6px; background: var(--card-3); color: var(--ink-2); }
+.conf.hi { color: var(--live); }
+.ib { width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--line); background: var(--card-2); display: none; place-items: center; cursor: pointer; color: var(--ink-2); }
+.ib:hover { border-color: var(--line-2); color: var(--ink); }
+.ib.on { color: var(--gold); border-color: color-mix(in oklab, var(--gold) 50%, transparent); }
+.ib.playing { color: var(--accent); border-color: var(--accent); }
+body.admin .ib { display: grid; }
+.ib[disabled] { opacity: .3; cursor: default; }
+.flag { font-size: 10.5px; padding: 2px 6px; border-radius: 5px; background: var(--card-3); color: var(--ink-3); display: none; }
+body.admin .flag { display: inline-block; }
+.row.hidden-det { opacity: .45; }
+@media (max-width: 760px) {
+  .row { grid-template-columns: 58px 40px minmax(0, 1fr) auto; gap: 10px; padding: 10px 6px; }
+  .row .sp { grid-column: 2 / -1; grid-row: 2; height: 34px; }
+  .row img.av, .row .av { width: 40px; height: 40px; }
+}
+.more-btn { display: block; margin: 14px auto 0; border: 1px solid var(--line-2); background: var(--card); padding: 9px 18px; border-radius: 12px; cursor: pointer; font-size: 13.5px; }
+
+/* ---------- calendar ---------- */
+.cal { overflow-x: auto; scrollbar-width: thin; padding-bottom: 4px; }
+.cal svg { display: block; }
+.cal rect.d { rx: 3px; cursor: pointer; }
+.cal rect.d:hover { stroke: var(--ink); stroke-width: 1.5; }
+.cal text { fill: var(--ink-3); font: 10px var(--sans); }
+.legend { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); margin-top: 10px; }
+.legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+/* ---------- modal ---------- */
+dialog { border: 0; padding: 0; background: transparent; color: var(--ink); max-width: min(980px, calc(100vw - 24px)); width: 100%; max-height: calc(100dvh - 24px); }
+dialog::backdrop { background: rgba(5,8,7,.66); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.sheet { background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 22px; overflow: hidden; max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; }
+.sp-hero { position: relative; height: clamp(260px, 46vh, 460px); background: var(--card-2); isolation: isolate; color: #f6f0e2; }
+.sp-hero img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; }
+.sp-hero::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, rgba(6,9,8,.35), transparent 30%, transparent 50%, rgba(6,9,8,.9)); }
+.sp-hero .ttl { position: absolute; left: 28px; right: 28px; bottom: 22px; }
+.sp-hero h2 { margin: 0; font: 600 clamp(32px, 5vw, 52px)/1 var(--serif); letter-spacing: -.015em; font-variation-settings: "opsz" 144; }
+.sp-hero .sci { font: italic 18px var(--serif); opacity: .85; margin-top: 6px; }
+.sp-hero .credit { position: absolute; right: 12px; top: 12px; font-size: 11px; background: rgba(6,9,8,.55); padding: 4px 8px; border-radius: 6px; max-width: 60%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-hero .credit a { text-decoration: none; }
+.x { position: absolute; left: 12px; top: 12px; width: 38px; height: 38px; border-radius: 50%; border: 1px solid rgba(255,255,255,.2); background: rgba(6,9,8,.55); color: #fff; cursor: pointer; display: grid; place-items: center; z-index: 2; }
+.sp-body { padding: 22px 28px 28px; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 26px; }
+@media (max-width: 760px) { .sp-body { grid-template-columns: minmax(0,1fr); padding: 18px 16px 22px; } .sp-hero .ttl { left: 16px; right: 16px; } }
+.sp-body p.ex { margin: 0 0 14px; color: var(--ink-2); line-height: 1.65; font-size: 15px; }
+.links { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.lnk { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); text-decoration: none; font-size: 13px; }
+.lnk:hover { border-color: var(--line-2); }
+.kv { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; margin-bottom: 18px; }
+.kv div { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+.kv b { display: block; font: 600 20px var(--serif); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kv span { font-size: 12px; color: var(--ink-3); }
+.sp-body h4 { margin: 18px 0 8px; font: 600 15px var(--serif); }
+.sp-body h4:first-child { margin-top: 0; }
+.clockwrap { display: grid; place-items: center; }
+
+/* ---------- forms / toast ---------- */
+.form { padding: 26px; display: grid; gap: 12px; width: min(380px, calc(100vw - 24px)); }
+.form h3 { margin: 0 0 4px; font: 600 24px var(--serif); }
+.form input { background: var(--card); border: 1px solid var(--line-2); border-radius: 10px; padding: 11px 12px; font-size: 16px; }
+.form .err { color: var(--bad); font-size: 13px; min-height: 18px; }
+.btn { border: 0; border-radius: 10px; padding: 11px 16px; background: var(--accent); color: var(--accent-ink); font-weight: 600; cursor: pointer; }
+.btn.ghost { background: var(--card); color: var(--ink); border: 1px solid var(--line-2); }
+.toasts { position: fixed; right: 16px; bottom: 16px; z-index: 80; display: flex; flex-direction: column; gap: 10px; max-width: calc(100vw - 32px); }
+.toast { display: flex; align-items: center; gap: 12px; padding: 10px 16px 10px 10px; border-radius: 14px; background: var(--card); border: 1px solid var(--line-2); box-shadow: 0 18px 40px -16px rgba(0,0,0,.6); cursor: pointer; animation: slidein .5s cubic-bezier(.2,.9,.3,1.2); }
+.toast img, .toast .ph { width: 44px; height: 44px; border-radius: 10px; object-fit: cover; background: var(--card-3); }
+.toast small { display: block; font-size: 11px; color: var(--accent); letter-spacing: .1em; text-transform: uppercase; font-weight: 700; }
+.toast b { font: 600 16px var(--serif); }
+@keyframes slidein { from { transform: translateY(20px); opacity: 0 } to { transform: none; opacity: 1 } }
+
+.adm { padding: 24px; display: grid; gap: 18px; }
+.adm h3 { margin: 0; font: 600 24px var(--serif); }
+.adm .kv { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); margin: 0; }
+.adm .note { font-size: 13px; color: var(--ink-3); line-height: 1.5; }
+
+footer { margin: 80px 0 40px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--ink-3); font-size: 12.5px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 14px; }
+footer button { background: none; border: 0; color: var(--ink-3); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; padding: 0; font-size: 12.5px; }
+footer a { color: var(--ink-2); }
+.skel { background: linear-gradient(90deg, var(--card-2), var(--card-3), var(--card-2)); background-size: 200% 100%; animation: sk 1.4s linear infinite; }
+@keyframes sk { to { background-position: -200% 0 } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#" aria-label="Birdsong">
+      <svg width="40" height="40" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="31" fill="var(--accent)"/><path d="M15 39c4-11 15-18 26-15.5l9-6.5-2.2 9.5C50 35 43.5 45 31 45c-7 0-12.5-2.3-16-6z" fill="var(--bg)"/><circle cx="41.5" cy="28" r="1.8" fill="var(--accent)"/></svg>
+      <div><h1 id="siteTitle">Birdsong</h1><small id="siteTagline">Live</small></div>
+    </a>
+    <div class="spacer"></div>
+    <button class="admin-badge" id="adminBadge" type="button">Admin</button>
+    <span class="clock num" id="clock"></span>
+    <span class="pill" id="status"><span class="dot"></span><span id="statusText">Connecting…</span></span>
+  </header>
+
+  <div class="hero">
+    <article class="card latest empty" id="latest" tabindex="0" aria-live="polite"></article>
+    <div class="card listen">
+      <div class="listen-head">
+        <h3>Listening now</h3>
+        <span class="muted" style="font-size:12.5px" id="listenNote">last 30 seconds</span>
+      </div>
+      <div class="scope" id="scope">
+        <canvas id="wf" width="600" height="64" aria-label="Live spectrogram of the microphone"></canvas>
+        <div class="axis"><span>12 kHz</span><span>1.9 kHz</span><span>0.3 kHz</span></div>
+        <div class="tl">now →</div>
+        <div class="offline" id="offline">The microphone is offline right now.<br>Detections will resume when it's back.</div>
+      </div>
+      <div class="hearing" id="hearing"></div>
+      <div class="meter"><span>Level</span><span class="bar"><i id="lvl"></i></span><span class="num" id="lvlTxt">–</span></div>
+      <div class="mini">
+        <div><b class="num" id="tSpecies">–</b><span>species today</span></div>
+        <div><b class="num" id="tDets">–</b><span>detections today</span></div>
+        <div><b class="num" id="tHours">–</b><span>hours listened</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="strip" id="strip" aria-label="Most recent detections"></div>
+
+  <section class="blk" id="logbook">
+    <div class="sec-head">
+      <div><h2>Logbook</h2><p id="periodSub">Everything heard, by day, week, month and year.</p></div>
+      <div class="controls">
+        <div class="seg" id="spanSeg" role="group" aria-label="Period">
+          <button data-span="day" aria-pressed="true">Day</button>
+          <button data-span="week" aria-pressed="false">Week</button>
+          <button data-span="month" aria-pressed="false">Month</button>
+          <button data-span="year" aria-pressed="false">Year</button>
+          <button data-span="all" aria-pressed="false">All time</button>
+        </div>
+        <div class="nav">
+          <button id="prevBtn" aria-label="Previous period"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg></button>
+          <span class="lbl" id="periodLabel">Today</span>
+          <button id="nextBtn" aria-label="Next period"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg></button>
+          <button class="today" id="nowBtn">Now</button>
+        </div>
+      </div>
+    </div>
+    <div class="tiles">
+      <div class="card tile"><div class="k">Detections</div><div class="v num" id="kDet">–</div><div class="d" id="kDetD">&nbsp;</div></div>
+      <div class="card tile"><div class="k">Species</div><div class="v num" id="kSp">–</div><div class="d" id="kSpD">&nbsp;</div></div>
+      <div class="card tile"><div class="k">New to the list</div><div class="v num" id="kNew">–</div><div class="d" id="kNewD">&nbsp;</div></div>
+      <div class="card tile"><div class="k" id="kFirstK">First song</div><div class="v sm" id="kFirst">–</div><div class="d" id="kFirstD">&nbsp;</div></div>
+    </div>
+    <div class="grid2">
+      <div class="card panel"><h3>Activity</h3><p class="sub" id="actSub">Detections per hour</p><div class="chart" id="actChart"></div></div>
+      <div class="card panel"><h3>Who sang when</h3><p class="sub" id="heatSub">Each row is a species; brighter means more detections</p><div class="heat" id="heat"></div></div>
+    </div>
+
+    <div style="margin-top:34px" class="sec-head">
+      <div><h3 class="serif" style="margin:0;font-size:24px;font-weight:600">Most detected</h3><p id="rankSub">Ranked for this period</p></div>
+      <div class="controls">
+        <label class="sr" for="rankSort">Sort</label>
+        <select class="sel" id="rankSort">
+          <option value="most">Most detected</option>
+          <option value="least">Fewest detections</option>
+          <option value="az">Name A–Z</option>
+          <option value="za">Name Z–A</option>
+          <option value="recent">Most recently heard</option>
+          <option value="earliest">Earliest first heard</option>
+          <option value="conf">Best confidence</option>
+          <option value="rarity">Rarity (unusual first)</option>
+        </select>
+      </div>
+    </div>
+    <div class="cards" id="rankCards"></div>
+    <button class="more-btn" id="rankMore" hidden></button>
+
+    <div style="margin-top:34px" class="sec-head">
+      <div><h3 class="serif" style="margin:0;font-size:24px;font-weight:600">Detection log</h3><p id="logSub">Every detection, newest first, with its spectrogram</p></div>
+    </div>
+    <div class="card"><div class="log" id="log"></div></div>
+    <button class="more-btn" id="logMore" hidden>Load more</button>
+  </section>
+
+  <section class="blk" id="calendarSec">
+    <div class="sec-head">
+      <div><h2>The year in song</h2><p>Detections per day. Pick any day to open it in the logbook.</p></div>
+      <div class="nav">
+        <button id="yPrev" aria-label="Previous year"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg></button>
+        <span class="lbl num" id="yLbl"></span>
+        <button id="yNext" aria-label="Next year"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg></button>
+      </div>
+    </div>
+    <div class="card panel"><div class="cal" id="cal"></div><div class="legend" id="calLegend"></div></div>
+  </section>
+
+  <section class="blk" id="garden">
+    <div class="sec-head">
+      <div><h2>The local list</h2><p>Every species heard here, plus the ones that could turn up. Greyed-out birds haven't been heard yet.</p></div>
+      <div class="controls">
+        <div class="seg" id="gFilter" role="group" aria-label="Filter">
+          <button data-f="heard" aria-pressed="true">Heard</button>
+          <button data-f="all" aria-pressed="false">All</button>
+          <button data-f="unheard" aria-pressed="false">Not yet</button>
+          <button data-f="unusual" aria-pressed="false">Unusual</button>
+        </div>
+        <select class="sel" id="gSort" aria-label="Sort">
+          <option value="most">Most detected</option>
+          <option value="least">Rarest (fewest detections)</option>
+          <option value="az">Name A–Z</option>
+          <option value="za">Name Z–A</option>
+          <option value="recent">Most recently heard</option>
+          <option value="first">First ever heard</option>
+          <option value="conf">Best confidence</option>
+          <option value="rarity">Rarity (unusual first)</option>
+        </select>
+        <input class="search" id="gSearch" type="search" placeholder="Search birds…" aria-label="Search birds">
+      </div>
+    </div>
+    <div class="progress" id="gProgress"></div>
+    <div class="cards" id="gCards"></div>
+    <button class="more-btn" id="gMore" hidden>Show more</button>
+  </section>
+
+  <footer>
+    <div>Identification by <a href="https://birdnet.cornell.edu/" target="_blank" rel="noopener noreferrer">BirdNET</a> (K. Lisa Yang Center for Conservation Bioacoustics, Cornell Lab of Ornithology &amp; Chemnitz University of Technology). Photos and descriptions from Wikipedia and Wikimedia Commons; credits on each bird. Detections are automatic and can be wrong.</div>
+    <div><button id="adminBtn" type="button">Admin</button></div>
+  </footer>
+</div>
+
+<div class="tip" id="tip" role="tooltip"></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<dialog id="spDlg" aria-label="Bird details"><div class="sheet" id="spSheet"></div></dialog>
+<dialog id="loginDlg" aria-label="Admin sign in">
+  <form class="sheet form" id="loginForm" method="dialog">
+    <h3>Admin</h3>
+    <input name="username" autocomplete="username" placeholder="Username" value="admin" required>
+    <input name="password" type="password" autocomplete="current-password" placeholder="Password" required>
+    <div class="err" id="loginErr"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn ghost" type="button" id="loginCancel">Cancel</button><button class="btn" type="submit">Sign in</button></div>
+  </form>
+</dialog>
+<dialog id="admDlg" aria-label="Admin"><div class="sheet adm" id="admSheet"></div></dialog>
+
+<script>
+"use strict";
+(() => {
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtN = n => (n ?? 0).toLocaleString("en-GB");
+const pct = c => Math.round((c || 0) * 100) + "%";
+const DAY = 86400000;
+const NARROW = matchMedia("(max-width: 640px)").matches;
+
+const ICON = {
+  play: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>',
+  pause: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>',
+  star: '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>',
+  hide: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l18 18M10.6 6.1A10 10 0 0 1 12 6c6 0 9.5 6 9.5 6a17 17 0 0 1-3 3.6M6.4 7.4A17 17 0 0 0 2.5 12s3.5 6 9.5 6a9.6 9.6 0 0 0 4.2-1"/></svg>',
+  check: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  dl: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg>',
+  trash: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13"/></svg>',
+  ext: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/></svg>',
+  x: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  bird: '<svg width="46" height="46" viewBox="0 0 64 64" fill="currentColor" opacity=".5"><path d="M10 40c5-13 18-21 31-18l11-8-3 11c3 11-5 22-19 22-9 0-15-3-20-7z"/></svg>',
+};
+
+// ---------- api ----------
+async function api(path, opts = {}) {
+  const init = { credentials: "same-origin", cache: "no-store", headers: {} };
+  if (opts.body) {
+    init.method = "POST";
+    init.headers["Content-Type"] = "application/json";
+    init.headers["X-Birds"] = "1";
+    init.body = JSON.stringify(opts.body);
+  }
+  const r = await fetch(path, init);
+  let data = null;
+  try { data = await r.json(); } catch (_) {}
+  if (!r.ok) throw Object.assign(new Error((data && data.error) || ("HTTP " + r.status)), { status: r.status });
+  return data;
+}
+
+// ---------- state ----------
+const S = {
+  admin: false, seq: 0, rev: null, seen: new Set(), firstLive: true,
+  span: "day", date: isoDate(new Date()), period: null, rankSort: "most",
+  logBefore: null, gFilter: "heard", gSort: "most", gQuery: "", gLimit: NARROW ? 24 : 60, species: null, rankAll: false,
+  calYear: new Date().getFullYear(), lastPeriodFetch: 0, info: {},
+};
+try {
+  const saved = JSON.parse(localStorage.getItem("birds.prefs") || "{}");
+  if (saved.rankSort) S.rankSort = saved.rankSort;
+  if (saved.gSort) S.gSort = saved.gSort;
+  if (saved.gFilter) S.gFilter = saved.gFilter;
+} catch (_) {}
+function savePrefs() {
+  try { localStorage.setItem("birds.prefs", JSON.stringify({ rankSort: S.rankSort, gSort: S.gSort, gFilter: S.gFilter })); } catch (_) {}
+}
+
+function isoDate(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+function tTime(ts, sec) { return new Date(ts * 1000).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", ...(sec ? { second: "2-digit" } : {}) }); }
+function tDate(ts, opt) { return new Date(ts * 1000).toLocaleDateString("en-GB", opt || { day: "numeric", month: "short", year: "numeric" }); }
+function ago(ts) {
+  const s = Math.max(0, Date.now() / 1000 - ts);
+  if (s < 45) return "just now";
+  if (s < 3600) return Math.round(s / 60) + " min ago";
+  if (s < 86400) { const h = Math.floor(s / 3600); return h + (h === 1 ? " hour ago" : " hours ago"); }
+  const d = Math.floor(s / 86400);
+  if (d < 14) return d + (d === 1 ? " day ago" : " days ago");
+  return tDate(ts);
+}
+function whenFull(ts) {
+  const d = new Date(ts * 1000), today = isoDate(new Date()), yd = isoDate(new Date(Date.now() - DAY));
+  const day = isoDate(d) === today ? "Today" : isoDate(d) === yd ? "Yesterday" : tDate(ts, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  return `${day}, ${tTime(ts, true)}`;
+}
+const imgSm = b => b.photo ? `img/${b.slug}_sm.jpg` : "";
+const imgLg = b => b.photo ? `img/${b.slug}.jpg` : "";
+const avatar = (b, cls = "") => b.photo
+  ? `<img class="${cls}" src="${imgSm(b)}" alt="" loading="lazy" decoding="async">`
+  : `<span class="ph ${cls}"></span>`;
+const tierBadge = t => t === 2 ? '<span class="badge unusual">Unusual</span>' : t === 3 ? '<span class="badge vagrant">Rarity</span>' : "";
+
+// ---------- tooltip ----------
+const tip = $("#tip");
+function showTip(html, e) {
+  tip.innerHTML = html; tip.classList.add("on");
+  const r = tip.getBoundingClientRect();
+  let x = e.clientX + 14, y = e.clientY - r.height - 12;
+  if (x + r.width > innerWidth - 8) x = e.clientX - r.width - 14;
+  if (y < 8) y = e.clientY + 18;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+function hideTip() { tip.classList.remove("on"); }
+document.addEventListener("scroll", hideTip, { passive: true });
+
+// ---------- live waterfall ----------
+const wf = $("#wf"), wctx = wf.getContext("2d");
+const LUT = (() => {
+  const stops = [[0, [11, 20, 24]], [.3, [20, 66, 76]], [.55, [38, 128, 122]], [.75, [214, 168, 74]], [.9, [246, 214, 140]], [1, [255, 246, 222]]];
+  const out = new Uint8ClampedArray(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const x = i / 255; let k = 0;
+    while (k < stops.length - 2 && x > stops[k + 1][0]) k++;
+    const [x0, c0] = stops[k], [x1, c1] = stops[k + 1], t = (x - x0) / (x1 - x0);
+    for (let c = 0; c < 3; c++) out[i * 3 + c] = c0[c] + (c1[c] - c0[c]) * t;
+  }
+  return out;
+})();
+const WF = { bands: 64, cols: 600, queue: [], img: null, last: 0, rate: 20, acc: 0 };
+function wfInit(bands) {
+  WF.bands = bands; wf.width = WF.cols; wf.height = bands;
+  WF.img = wctx.createImageData(WF.cols, bands);
+  for (let i = 0; i < WF.img.data.length; i += 4) { WF.img.data[i] = 11; WF.img.data[i + 1] = 20; WF.img.data[i + 2] = 24; WF.img.data[i + 3] = 255; }
+  wctx.putImageData(WF.img, 0, 0);
+}
+function wfPush(b64, bands) {
+  if (!b64) return;
+  if (bands !== WF.bands || !WF.img) wfInit(bands);
+  const bin = atob(b64);
+  for (let i = 0; i + bands <= bin.length; i += bands) {
+    const col = new Uint8Array(bands);
+    for (let j = 0; j < bands; j++) col[j] = bin.charCodeAt(i + j);
+    WF.queue.push(col);
+  }
+  // On first load (or after a stall) draw the backlog straight away.
+  if (WF.queue.length > 160) { while (WF.queue.length > 60) wfDraw(WF.queue.shift()); }
+}
+function wfDraw(col) {
+  const d = WF.img.data, W = WF.cols, B = WF.bands;
+  for (let y = 0; y < B; y++) {
+    const row = y * W * 4;
+    d.copyWithin(row, row + 4, row + W * 4);
+    const v = col[B - 1 - y], p = row + (W - 1) * 4;
+    d[p] = LUT[v * 3]; d[p + 1] = LUT[v * 3 + 1]; d[p + 2] = LUT[v * 3 + 2]; d[p + 3] = 255;
+  }
+}
+function wfFrame(t) {
+  if (WF.img) {
+    const dt = WF.last ? Math.min(250, t - WF.last) : 0; WF.last = t;
+    // Play columns out at their real rate, a little faster if the buffer grows.
+    const speed = WF.queue.length > 70 ? 1.6 : WF.queue.length < 15 ? .7 : 1;
+    WF.acc += dt / 1000 * WF.rate * speed;
+    let n = Math.floor(WF.acc); WF.acc -= n;
+    let drew = false;
+    while (n-- > 0 && WF.queue.length) { wfDraw(WF.queue.shift()); drew = true; }
+    if (drew) wctx.putImageData(WF.img, 0, 0);
+  }
+  requestAnimationFrame(wfFrame);
+}
+requestAnimationFrame(wfFrame);
+wfInit(64);
+
+// ---------- live polling ----------
+let liveTimer = null;
+async function pollLive() {
+  clearTimeout(liveTimer);
+  try {
+    const L = await api(`api/live?since=${S.seq}`);
+    renderLive(L);
+  } catch (e) {
+    setStatus(false, "Can't reach the server");
+  }
+  liveTimer = setTimeout(pollLive, document.hidden ? 20000 : 2500);
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) pollLive(); });
+
+function setStatus(on, text) {
+  const p = $("#status");
+  p.classList.toggle("on", on); p.classList.toggle("off", !on);
+  $("#statusText").textContent = text;
+}
+
+function renderLive(L) {
+  if (L.online) {
+    setStatus(true, "Listening");
+    $("#scope").classList.remove("is-off");
+    if (L.cols) wfPush(L.cols, L.bands || 64);
+    WF.rate = L.col_rate || 20;
+    S.seq = L.seq || S.seq;
+  } else {
+    setStatus(false, L.mic_error ? "Microphone problem" : L.started ? "Microphone offline" : "Not listening");
+    $("#scope").classList.add("is-off");
+  }
+  const db = L.level_db;
+  if (L.online && db != null) {
+    const w = Math.max(2, Math.min(100, (db + 75) / 70 * 100));
+    $("#lvl").style.width = w + "%";
+    $("#lvl").className = db > -3 ? "clip" : db > -12 ? "hot" : "";
+    $("#lvlTxt").textContent = Math.round(db) + " dB";
+  } else { $("#lvl").style.width = "0"; $("#lvlTxt").textContent = "–"; }
+
+  $("#tSpecies").textContent = fmtN(L.today.species);
+  $("#tDets").textContent = fmtN(L.today.detections);
+  $("#tHours").textContent = L.today.hours != null ? L.today.hours.toFixed(1) : "–";
+
+  const h = $("#hearing");
+  if (L.online && L.hearing && L.hearing.length) {
+    h.innerHTML = `<span class="wave"><i></i><i></i><i></i><i></i></span> Hearing now: ` +
+      L.hearing.map(b => `<b>${esc(b.common)}</b>`).join(", ");
+  } else if (L.online) {
+    h.innerHTML = `<span class="muted">Quiet at the moment. A new bird shows up here within seconds.</span>`;
+  } else h.innerHTML = "";
+
+  renderLatest(L.recent && L.recent[0]);
+  renderStrip(L.recent || []);
+
+  // New detections -> toast (not on first load).
+  const fresh = [];
+  for (const d of L.recent || []) { if (!S.seen.has(d.id)) { S.seen.add(d.id); if (!S.firstLive) fresh.push(d); } }
+  fresh.reverse().slice(-3).forEach(toast);
+  S.firstLive = false;
+
+  if (S.rev !== null && S.rev !== L.rev) {
+    if (S.period && S.period.current) loadPeriod(true);
+    if (S.species) loadSpecies();
+  }
+  S.rev = L.rev;
+}
+
+function renderLatest(d) {
+  const el = $("#latest");
+  if (!d) {
+    el.className = "card latest empty";
+    el.innerHTML = `<div class="wait-art">${waitArt()}</div><div class="body">
+      <div class="eyebrow">Latest visitor</div>
+      <h2>Waiting for the first bird</h2>
+      <div class="muted" style="margin-top:6px;max-width:44ch">${esc(S.info.about || "")}</div></div>`;
+    el.onclick = null;
+    return;
+  }
+  if (el.dataset.id === String(d.id) && el.dataset.spec === String(d.spec) && el.dataset.photo === String(d.photo)) {
+    $("#latestAgo", el) && ($("#latestAgo", el).textContent = ago(d.start));
+    return;
+  }
+  el.dataset.id = d.id; el.dataset.spec = d.spec; el.dataset.photo = d.photo;
+  S._latestTs = d.start;
+  el.className = "card latest";
+  el.innerHTML = `<div class="bgimg">${d.photo ? `<img src="${imgLg(d)}" alt="${esc(d.common)}">` : ""}</div>
+    <div class="body">
+      <div class="eyebrow"><span class="dot" style="background:#ffb27a"></span> Latest visitor ${tierBadge(d.tier)}</div>
+      <h2>${esc(d.common)}</h2>
+      <div class="sci">${esc(d.sci)}</div>
+      <div class="chips">
+        <span class="chip num">${esc(whenFull(d.start))}</span>
+        <span class="chip" id="latestAgo">${esc(ago(d.start))}</span>
+        <span class="chip num">${pct(d.conf)} confidence</span>
+        ${d.end - d.start > 4 ? `<span class="chip num">sang for ${Math.round(d.end - d.start)}s</span>` : ""}
+      </div>
+      ${d.spec ? `<div class="spec"><img src="spec/${d.id}.png" alt="Spectrogram of the detection"></div>` : ""}
+    </div>`;
+  el.onclick = () => openSpecies(d.slug);
+  el.onkeydown = e => { if (e.key === "Enter") openSpecies(d.slug); };
+}
+
+function waitArt() {
+  return `<svg width="220" height="140" viewBox="0 0 220 140" fill="none" aria-hidden="true">
+    <path d="M10 118h200" stroke="var(--line-2)" stroke-width="2" stroke-linecap="round"/>
+    <path d="M40 118c0-30 10-52 30-62" stroke="var(--line-2)" stroke-width="2" stroke-linecap="round"/>
+    <g fill="var(--accent)" opacity=".9"><path d="M92 92c4-14 18-22 32-19l12-8-3 12c3 12-6 23-21 23-9 0-16-3-20-8z"/></g>
+    <g stroke="var(--gold)" stroke-width="2" stroke-linecap="round" opacity=".8">
+      <path d="M150 64c6 4 6 12 0 16"><animate attributeName="opacity" values="0;1;0" dur="2.4s" repeatCount="indefinite"/></path>
+      <path d="M160 56c11 8 11 24 0 32"><animate attributeName="opacity" values="0;1;0" dur="2.4s" begin=".4s" repeatCount="indefinite"/></path>
+      <path d="M170 48c16 12 16 36 0 48"><animate attributeName="opacity" values="0;1;0" dur="2.4s" begin=".8s" repeatCount="indefinite"/></path>
+    </g></svg>`;
+}
+
+function renderStrip(list) {
+  const el = $("#strip");
+  const prev = new Set($$(".rc", el).map(x => x.dataset.id));
+  el.innerHTML = list.map(d => `<div class="rc${prev.size && !prev.has(String(d.id)) ? " fresh" : ""}" data-id="${d.id}" data-slug="${esc(d.slug)}" role="button" tabindex="0">
+      ${avatar(d)}<div><b>${esc(d.common)}</b><span class="num">${tTime(d.start)} · ${ago(d.start)}</span></div></div>`).join("");
+  $$(".rc", el).forEach(x => { x.onclick = () => openSpecies(x.dataset.slug); x.onkeydown = e => { if (e.key === "Enter") openSpecies(x.dataset.slug); }; });
+}
+
+function toast(d) {
+  const t = document.createElement("div");
+  t.className = "toast";
+  t.innerHTML = `${avatar(d)}<div><small>Just heard</small><b>${esc(d.common)}</b></div>`;
+  t.onclick = () => { openSpecies(d.slug); t.remove(); };
+  $("#toasts").appendChild(t);
+  setTimeout(() => t.remove(), 9000);
+}
+
+// ---------- period / logbook ----------
+$$("#spanSeg button").forEach(b => b.onclick = () => { S.span = b.dataset.span; loadPeriod(); });
+$("#prevBtn").onclick = () => { if (S.period && S.period.prev) { S.date = S.period.prev; loadPeriod(); } };
+$("#nextBtn").onclick = () => { if (S.period && S.period.next) { S.date = S.period.next; loadPeriod(); } };
+$("#nowBtn").onclick = () => { S.date = isoDate(new Date()); loadPeriod(); };
+$("#rankSort").onchange = e => { S.rankSort = e.target.value; savePrefs(); renderRank(); };
+$("#rankMore").onclick = () => { S.rankAll = true; renderRank(); };
+
+async function loadPeriod(quiet) {
+  $$("#spanSeg button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.span === S.span)));
+  try { history.replaceState(null, "", `#${S.span}/${S.date}`); } catch (_) {}
+  // Debounce live-triggered refreshes.
+  if (quiet && Date.now() - S.lastPeriodFetch < 4000) return;
+  S.lastPeriodFetch = Date.now();
+  const P = await api(`api/period?span=${S.span}&date=${S.date}`);
+  if (!quiet) S.rankAll = false;
+  S.period = P;
+  renderPeriod(P);
+  S.logBefore = null;
+  loadLog(false);
+}
+
+function delta(cur, prev, unit) {
+  if (prev == null) return "&nbsp;";
+  const d = cur - prev;
+  const word = { day: "yesterday", week: "last week", month: "last month", year: "last year" }[S.span] || "before";
+  if (d === 0) return `same as ${word}`;
+  return `<span class="${d > 0 ? "up" : "down"}">${d > 0 ? "▲" : "▼"} ${fmtN(Math.abs(d))}</span> vs ${word}`;
+}
+
+function renderPeriod(P) {
+  $("#periodLabel").textContent = P.current && S.span === "day" ? "Today" : P.label;
+  $("#prevBtn").disabled = !P.prev;
+  $("#nextBtn").disabled = !P.next;
+  $("#nowBtn").hidden = P.current || S.span === "all";
+  $("#periodSub").textContent = S.span === "all"
+    ? (P.since ? `Everything since ${tDate(new Date(P.since).getTime() / 1000)}.` : "Everything heard so far.")
+    : `${P.label}${P.totals.hours ? ` · ${P.totals.hours} hours listened` : ""}`;
+  $("#kDet").textContent = fmtN(P.totals.detections);
+  $("#kSp").textContent = fmtN(P.totals.species);
+  $("#kNew").textContent = fmtN(P.totals.new);
+  $("#kDetD").innerHTML = delta(P.totals.detections, P.prev_totals && P.prev_totals.detections);
+  $("#kSpD").innerHTML = delta(P.totals.species, P.prev_totals && P.prev_totals.species);
+  const news = P.species.filter(s => s.new);
+  $("#kNewD").textContent = news.length ? news.slice(0, 3).map(s => s.common).join(", ") + (news.length > 3 ? "…" : "") : "first-ever detections";
+  if (S.span === "day") {
+    $("#kFirstK").textContent = "First song";
+    if (P.first) {
+      const b = P.species.find(s => s.sci === P.first.sci) || {};
+      $("#kFirst").textContent = tTime(P.first.start);
+      $("#kFirstD").textContent = b.common || "";
+    } else { $("#kFirst").textContent = "–"; $("#kFirstD").textContent = "no birds yet"; }
+  } else {
+    $("#kFirstK").textContent = "Busiest " + (S.span === "week" || S.span === "month" ? "day" : "month");
+    const mx = Math.max(0, ...P.series);
+    if (mx > 0) {
+      const i = P.series.indexOf(mx);
+      $("#kFirst").textContent = S.span === "month" ? `${P.buckets[i]} ${P.label.split(" ")[0].slice(0, 3)}` : P.buckets[i];
+      $("#kFirstD").textContent = `${fmtN(mx)} detections`;
+    } else { $("#kFirst").textContent = "–"; $("#kFirstD").textContent = "no birds yet"; }
+  }
+  renderHeat(P);
+  $("#actSub").textContent = { day: "Detections per hour", week: "Detections per day", month: "Detections per day", year: "Detections per month", all: "Detections per month" }[S.span];
+  const wide = matchMedia("(min-width: 961px)").matches;
+  renderBars($("#actChart"), P.buckets, P.series, i => {
+    const lbl = S.span === "day" ? `${P.buckets[i]}:00–${String((+P.buckets[i] + 1) % 24).padStart(2, "0")}:00` : P.buckets[i];
+    const top = P.species.filter(s => s.counts[i]).sort((a, b) => b.counts[i] - a.counts[i]).slice(0, 3);
+    return `<b>${esc(lbl)}</b><br>${fmtN(P.series[i])} detections${top.length ? "<br>" + top.map(s => `${esc(s.common)} ${s.counts[i]}`).join("<br>") : ""}`;
+  }, { h: wide ? Math.max(190, Math.min(380, $("#heat").offsetHeight || 0)) : 190 });
+  renderRank();
+}
+
+function renderBars(el, labels, values, tipFn, opts = {}) {
+  const W = Math.max(280, el.clientWidth || 600), H = opts.h || 190, padL = 30, padB = 22, padT = 8;
+  const n = values.length, mx = Math.max(1, ...values);
+  if (!values.some(v => v > 0) && !opts.allowEmpty) {
+    el.innerHTML = `<div class="empty-note">No detections in this period yet.</div>`;
+    return;
+  }
+  const nice = (() => { const raw = mx / 3, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p; })();
+  const top = Math.max(nice * Math.ceil(mx / nice), 1);
+  const iw = W - padL - 4, ih = H - padB - padT, bw = iw / n, gap = Math.min(4, Math.max(2, bw * .22));
+  const y = v => padT + ih - v / top * ih;
+  let g = `<g class="grid">`;
+  for (let v = 0; v <= top + 1e-9; v += nice) g += `<line x1="${padL}" x2="${W - 4}" y1="${y(v)}" y2="${y(v)}"/><text x="${padL - 6}" y="${y(v) + 4}" text-anchor="end">${fmtN(Math.round(v))}</text>`;
+  g += `</g>`;
+  const every = Math.ceil(n / Math.max(4, Math.floor(iw / 44)));
+  let bars = "", xl = "";
+  values.forEach((v, i) => {
+    const x = padL + i * bw + gap / 2, w = Math.max(1, bw - gap), hgt = Math.max(v > 0 ? 2 : 0, ih * v / top), r = Math.min(4, w / 2, hgt);
+    if (v > 0) bars += `<path class="bar" d="M${x},${padT + ih} v${-(hgt - r)} q0,${-r} ${r},${-r} h${w - 2 * r} q${r},0 ${r},${r} v${hgt - r} z"/>`;
+    bars += `<rect x="${padL + i * bw}" y="${padT}" width="${bw}" height="${ih}" fill="transparent" data-i="${i}"/>`;
+    if (i % every === 0) xl += `<text x="${padL + i * bw + bw / 2}" y="${H - 6}" text-anchor="middle">${esc(labels[i])}</text>`;
+  });
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="Bar chart">${g}${bars}${xl}</svg>`;
+  const paths = $$("path.bar", el);
+  $$("rect[data-i]", el).forEach(r => {
+    r.onmousemove = e => showTip(tipFn(+r.dataset.i), e);
+    r.onmouseleave = hideTip;
+    r.onclick = e => showTip(tipFn(+r.dataset.i), e);
+  });
+}
+
+function heatColor(v, mx) {
+  if (!v) return "var(--heat-0)";
+  const t = .18 + .82 * Math.sqrt(v / mx);
+  return `color-mix(in oklab, var(--heat-hi) ${Math.round(t * 100)}%, var(--heat-0))`;
+}
+
+function renderHeat(P) {
+  const el = $("#heat");
+  const list = [...P.species].sort((a, b) => b.n - a.n);
+  if (!list.length) { el.innerHTML = `<div class="empty-note">Nothing heard in this period yet.</div>`; return; }
+  const top = list.slice(0, 14), rest = list.length - top.length;
+  const mx = Math.max(1, ...top.flatMap(s => s.counts));
+  const every = Math.ceil(P.buckets.length / 12);
+  let h = "<table><tbody>";
+  for (const s of top) {
+    h += `<tr><td class="nm" data-slug="${esc(s.slug)}" title="${esc(s.common)}">${avatar(s)}${esc(s.common)}</td>`;
+    s.counts.forEach((v, i) => { h += `<td class="c" data-s="${esc(s.slug)}" data-i="${i}" style="background:${heatColor(v, mx)}"></td>`; });
+    h += "</tr>";
+  }
+  h += `<tr class="xl"><td></td>${P.buckets.map((b, i) => `<td>${i % every === 0 ? esc(b) : ""}</td>`).join("")}</tr></tbody></table>`;
+  if (rest > 0) h += `<div class="more">and ${rest} more species, all in the cards below</div>`;
+  el.innerHTML = h;
+  const bySlug = Object.fromEntries(top.map(s => [s.slug, s]));
+  $$("td.c", el).forEach(c => {
+    const s = bySlug[c.dataset.s], i = +c.dataset.i;
+    const f = e => showTip(`<b>${esc(s.common)}</b><br>${esc(P.buckets[i])}${S.span === "day" ? ":00" : ""} · ${s.counts[i]} detection${s.counts[i] === 1 ? "" : "s"}`, e);
+    c.onmousemove = f; c.onclick = f; c.onmouseleave = hideTip;
+  });
+  $$("td.nm", el).forEach(c => c.onclick = () => openSpecies(c.dataset.slug));
+}
+
+const SORTS = {
+  most: (a, b) => b.n - a.n || a.common.localeCompare(b.common),
+  least: (a, b) => (a.n || 1e9) - (b.n || 1e9) || a.common.localeCompare(b.common),
+  az: (a, b) => a.common.localeCompare(b.common),
+  za: (a, b) => b.common.localeCompare(a.common),
+  recent: (a, b) => (b.last || 0) - (a.last || 0) || a.common.localeCompare(b.common),
+  earliest: (a, b) => (a.first || 9e12) - (b.first || 9e12),
+  first: (a, b) => (a.first || 9e12) - (b.first || 9e12),
+  conf: (a, b) => (b.best || 0) - (a.best || 0),
+  rarity: (a, b) => b.tier - a.tier || (a.n || 1e9) - (b.n || 1e9) || a.common.localeCompare(b.common),
+};
+
+function birdCard(s, rank, mx, ctx) {
+  const heard = s.n > 0;
+  const src = s.photo ? `srcset="img/${s.slug}_sm.jpg 330w, img/${s.slug}.jpg 960w" sizes="(max-width:520px) 48vw, 260px" src="img/${s.slug}_sm.jpg"` : "";
+  return `<button class="bird${heard ? "" : " unheard"}" data-slug="${esc(s.slug)}" aria-label="${esc(s.common)}">
+    ${s.photo ? `<img ${src} alt="" loading="lazy" decoding="async">` : `<span class="noimg">${ICON.bird}</span>`}
+    ${rank ? `<span class="rank num">#${rank}</span>` : ""}
+    <span class="tb">${s.new ? '<span class="badge new">New</span>' : ""}${tierBadge(s.tier)}</span>
+    <span class="info">
+      <h4>${esc(s.common)}</h4>
+      <div class="sci">${esc(s.sci)}</div>
+      ${heard ? `<div class="stats">
+        <span><b class="num">${fmtN(s.n)}</b>${s.n === 1 ? "detection" : "detections"}</span>
+        <span style="text-align:right"><b class="num">${tTime(s.last)}</b>${ctx === "period" && S.span === "day" ? "last heard" : esc(ago(s.last))}</span>
+      </div>
+      <div class="meterline"><i style="width:${Math.max(3, s.n / mx * 100)}%"></i></div>`
+      : `<div class="stats"><span>Not heard yet</span></div>`}
+    </span></button>`;
+}
+
+function renderRank() {
+  const P = S.period, el = $("#rankCards");
+  $("#rankSort").value = S.rankSort;
+  if (!P || !P.species.length) {
+    $("#rankMore").hidden = true;
+    el.innerHTML = `<div class="card empty-note" style="grid-column:1/-1">No birds detected ${S.span === "all" ? "yet" : "in this period"}. Have a look at the local list below for what might turn up.</div>`;
+    return;
+  }
+  const list = [...P.species].sort(SORTS[S.rankSort] || SORTS.most);
+  const mx = Math.max(...list.map(s => s.n));
+  const ranks = Object.fromEntries([...P.species].sort(SORTS.most).map((s, i) => [s.sci, i + 1]));
+  const lim = S.rankAll ? list.length : NARROW ? 6 : 15;
+  el.innerHTML = list.slice(0, lim).map(s => birdCard(s, ranks[s.sci], mx, "period")).join("");
+  $$(".bird", el).forEach(b => b.onclick = () => openSpecies(b.dataset.slug));
+  const more = $("#rankMore");
+  more.hidden = list.length <= lim;
+  more.textContent = `Show all ${list.length} species`;
+}
+
+// ---------- log ----------
+async function loadLog(append) {
+  const P = S.period; if (!P) return;
+  const q = new URLSearchParams({ limit: NARROW ? 15 : 40 });
+  if (S.span !== "all") { q.set("from", P.start); q.set("to", P.end); }
+  if (append && S.logBefore) q.set("before", S.logBefore);
+  const L = await api("api/log?" + q);
+  const el = $("#log");
+  const html = L.items.map(logRow).join("");
+  if (append) el.insertAdjacentHTML("beforeend", html); else el.innerHTML = html || `<div class="empty-note">No detections in this period yet.</div>`;
+  S.logBefore = L.items.length ? L.items[L.items.length - 1].id : null;
+  $("#logMore").hidden = !L.more;
+  wireRows(el);
+}
+$("#logMore").onclick = () => loadLog(true);
+
+function logRow(d, opts = {}) {
+  const dt = new Date(d.start * 1000);
+  const showDate = opts.date || S.span !== "day";
+  const flags = [];
+  if (S.admin) {
+    if (d.speech) flags.push('<span class="flag" title="Speech detected in this clip">speech</span>');
+    if (d.review === "pending") flags.push('<span class="flag" style="color:var(--bad)">needs review</span>');
+    if (d.hidden) flags.push('<span class="flag">hidden</span>');
+  }
+  return `<div class="row${d.hidden ? " hidden-det" : ""}" data-id="${d.id}" data-slug="${esc(d.slug || "")}">
+    <div class="tm num">${tTime(d.start, true)}${showDate ? `<small>${tDate(d.start, { day: "numeric", month: "short" })}</small>` : `<small>${d.end - d.start > 3.5 ? Math.round(d.end - d.start) + "s" : "3s"}</small>`}</div>
+    ${d.slug !== undefined && !opts.noAvatar ? (d.photo ? `<img class="av" src="${imgSm(d)}" alt="" loading="lazy">` : `<span class="av"></span>`) : "<span></span>"}
+    <div class="nm"><b>${esc(d.common || "")} ${tierBadge(d.tier)} ${flags.join(" ")}</b><i>${esc(d.sci)}</i></div>
+    ${d.spec ? `<div class="sp"><img src="spec/${d.id}.png" alt="" loading="lazy"></div>` : `<div class="sp none">${d.open ? "listening…" : ""}</div>`}
+    <div class="act">
+      <span class="conf num${d.conf >= .9 ? " hi" : ""}" title="BirdNET confidence">${pct(d.conf)}</span>
+      ${S.admin ? adminBtns(d) : ""}
+    </div></div>`;
+}
+
+function adminBtns(d) {
+  return `<button class="ib" data-a="play" title="Play clip" ${d.clip ? "" : "disabled"}>${ICON.play}</button>
+    <button class="ib${d.saved ? " on" : ""}" data-a="${d.saved ? "unsave" : "save"}" title="${d.saved ? "Saved (won't auto-delete). Click to unsave" : "Save clip (keep forever)"}" ${d.clip || d.saved ? "" : "disabled"}>${ICON.star}</button>
+    ${d.review === "pending" ? `<button class="ib" data-a="confirm" title="Confirm this rarity">${ICON.check}</button>` : ""}
+    <button class="ib${d.hidden ? " on" : ""}" data-a="${d.hidden ? "unhide" : "hide"}" title="${d.hidden ? "Unhide" : "Hide (false positive)"}">${ICON.hide}</button>`;
+}
+
+function wireRows(el) {
+  $$(".row", el).forEach(r => {
+    if (r.dataset.wired) return; r.dataset.wired = 1;
+    const open = () => r.dataset.slug && openSpecies(r.dataset.slug);
+    $(".nm", r).onclick = open;
+    const av = $(".av", r); if (av) av.onclick = open;
+    $$(".ib", r).forEach(b => b.onclick = e => { e.stopPropagation(); adminAct(r, b.dataset.a, b); });
+  });
+}
+
+// ---------- admin ----------
+let audio = null, audioBtn = null;
+async function adminAct(row, a, btn) {
+  const id = row.dataset.id;
+  if (a === "play") {
+    if (audioBtn === btn && audio && !audio.paused) { audio.pause(); return; }
+    if (audio) { audio.pause(); if (audioBtn) { audioBtn.innerHTML = ICON.play; audioBtn.classList.remove("playing"); } }
+    audio = new Audio(`clip/${id}`); audioBtn = btn;
+    btn.innerHTML = ICON.pause; btn.classList.add("playing");
+    const reset = () => { btn.innerHTML = ICON.play; btn.classList.remove("playing"); };
+    audio.onended = reset; audio.onpause = reset;
+    audio.play().catch(reset);
+    return;
+  }
+  try {
+    const r = await api(`api/admin/det/${id}`, { body: { action: a } });
+    const d = Object.assign({ slug: row.dataset.slug }, r.det);
+    // Re-render the row in place with the new flags.
+    const base = { common: $(".nm b", row).childNodes[0].textContent.trim(), photo: !!$("img.av", row) };
+    const tmp = document.createElement("div");
+    tmp.innerHTML = logRow(Object.assign(base, d), { date: true });
+    const nr = tmp.firstElementChild; row.replaceWith(nr); wireRows(nr.parentElement);
+  } catch (e) { alert(e.message); }
+}
+
+async function checkMe() {
+  try { const r = await api("api/me"); S.admin = !!r.admin; } catch (_) { S.admin = false; }
+  document.body.classList.toggle("admin", S.admin);
+  $("#adminBtn").textContent = S.admin ? "Admin panel · Sign out" : "Admin";
+}
+$("#adminBtn").onclick = () => S.admin ? openAdmin() : openLogin();
+$("#adminBadge").onclick = () => openAdmin();
+function openLogin() { $("#loginErr").textContent = ""; $("#loginDlg").showModal(); }
+$("#loginCancel").onclick = () => $("#loginDlg").close();
+$("#loginForm").onsubmit = async e => {
+  e.preventDefault();
+  const f = e.target;
+  try {
+    await api("api/login", { body: { username: f.username.value, password: f.password.value } });
+    f.reset(); $("#loginDlg").close();
+    await checkMe(); refreshAll();
+  } catch (err) { $("#loginErr").textContent = err.status === 401 ? "Wrong username or password." : "Couldn't sign in."; }
+};
+
+function bytes(n) { if (!n) return "0 B"; const u = ["B", "KB", "MB", "GB", "TB"]; const i = Math.min(4, Math.floor(Math.log(n) / Math.log(1024))); return (n / 1024 ** i).toFixed(i > 1 ? 1 : 0) + " " + u[i]; }
+async function openAdmin() {
+  const sh = $("#admSheet");
+  sh.innerHTML = `<div class="empty-note">Loading…</div>`;
+  $("#admDlg").showModal();
+  const [st, rv] = await Promise.all([api("api/admin/status"), api("api/admin/review")]);
+  const e = st.engine || {}, cfg = st.settings || {};
+  const clipped = e.clipped_at && Date.now() / 1000 - e.clipped_at < 3600;
+  sh.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><h3>Admin</h3>
+      <div style="display:flex;gap:8px"><button class="btn ghost" id="admOut">Sign out</button><button class="btn ghost" id="admX">Close</button></div></div>
+    <div class="kv">
+      <div><b>${fmtN(st.clips)}</b><span>clips kept · ${bytes(st.clip_bytes)}</span></div>
+      <div><b>${fmtN(st.saved)}</b><span>saved forever</span></div>
+      <div><b>${cfg.clip_days ?? "?"} days</b><span>clip retention</span></div>
+      <div><b>${bytes(st.disk_free)}</b><span>free on the drive</span></div>
+      <div><b>${bytes(st.spectro_bytes)}</b><span>spectrograms (${cfg.spectro_days}d)</span></div>
+      <div><b>${bytes(st.photos_bytes)}</b><span>bird photos</span></div>
+      <div><b class="${e.mic_error ? "down" : clipped ? "down" : "up"}">${e.mic_error ? "Error" : clipped ? "Clipping" : "OK"}</b><span>microphone${e.level_db != null ? " · " + Math.round(e.level_db) + " dB" : ""}</span></div>
+      <div><b>${fmtN(st.pending)}</b><span>rarities to review</span></div>
+    </div>
+    <p class="note">Clips are kept ${cfg.clip_days} days, capped at ${fmtN(cfg.max_clip_mb)} MB (oldest go first), and nothing new is recorded if the drive drops below ${cfg.min_free_gb} GB free. Starred clips are never deleted. Thresholds: ${pct(cfg.min_conf)} expected species, ${pct(cfg.unusual_conf)} unusual, ${pct(cfg.vagrant_conf)} rarities (which stay hidden from the public until you confirm them).${e.mic_error ? `<br><b class="down">Mic: ${esc(e.mic_error)}</b>` : ""}${clipped ? `<br><b class="down">The mic clipped in the last hour. Lower the Rear Microphone level a little.</b>` : ""}</p>
+    <div><h4 class="serif" style="margin:0 0 8px;font-size:18px">Review, hidden &amp; saved</h4>
+    <div class="card"><div class="log" id="admLog">${rv.items.length ? rv.items.map(d => logRow(d, { date: true })).join("") : `<div class="empty-note">Nothing to review.</div>`}</div></div></div>`;
+  wireRows($("#admLog"));
+  $("#admX").onclick = () => $("#admDlg").close();
+  $("#admOut").onclick = async () => { await api("api/logout", { body: {} }); $("#admDlg").close(); await checkMe(); refreshAll(); };
+}
+$("#admDlg").addEventListener("close", () => { if (audio) audio.pause(); });
+
+// ---------- species modal ----------
+async function openSpecies(slug) {
+  if (!slug) return;
+  const dlg = $("#spDlg"), sh = $("#spSheet");
+  sh.innerHTML = `<div class="sp-hero skel"></div><div class="sp-body"><div class="empty-note">Loading…</div></div>`;
+  if (!dlg.open) dlg.showModal();
+  sh.scrollTop = 0;
+  try { history.replaceState(null, "", `#bird/${slug}`); } catch (_) {}
+  let b;
+  try { b = await api(`api/species/${encodeURIComponent(slug)}`); } catch (e) { sh.innerHTML = `<div class="empty-note">Couldn't load this bird.</div>`; return; }
+  const credit = b.photo ? `Photo: ${esc(b.credit || "Wikimedia Commons")}${b.license ? " · " + esc(b.license) : ""}` : "";
+  const wiki = b.wiki || `https://en.wikipedia.org/wiki/${encodeURIComponent(b.sci.replace(/ /g, "_"))}`;
+  sh.innerHTML = `<div class="sp-hero">
+      ${b.photo ? `<img src="${imgLg(b)}" alt="${esc(b.common)}">` : ""}
+      <button class="x" id="spX" aria-label="Close">${ICON.x}</button>
+      ${credit ? `<div class="credit">${b.photo_page ? `<a href="${esc(b.photo_page)}" target="_blank" rel="noopener noreferrer">${credit}</a>` : credit}</div>` : ""}
+      <div class="ttl"><div class="eyebrow" style="color:#ffb27a">${b.n ? `Heard ${fmtN(b.n)} time${b.n === 1 ? "" : "s"}` : "Not heard yet"} ${tierBadge(b.tier)}</div>
+        <h2>${esc(b.common)}</h2><div class="sci">${esc(b.sci)}</div></div>
+    </div>
+    <div class="sp-body">
+      <div>
+        ${b.extract ? `<p class="ex">${esc(b.extract)}</p>` : ""}
+        <div class="links">
+          <a class="lnk" href="${esc(wiki)}" target="_blank" rel="noopener noreferrer">Wikipedia ${ICON.ext}</a>
+          <a class="lnk" href="https://xeno-canto.org/explore?query=${encodeURIComponent(b.sci)}" target="_blank" rel="noopener noreferrer">Reference calls on xeno-canto ${ICON.ext}</a>
+          <a class="lnk" href="https://www.allaboutbirds.org/news/search/?q=${encodeURIComponent(b.common)}" target="_blank" rel="noopener noreferrer">All About Birds ${ICON.ext}</a>
+        </div>
+        <div class="kv">
+          <div><b class="num">${fmtN(b.n)}</b><span>detections</span></div>
+          <div><b class="num">${b.best ? pct(b.best) : "–"}</b><span>best confidence</span></div>
+          <div><b>${b.first ? tDate(b.first) : "–"}</b><span>first heard${b.first ? " · " + tTime(b.first) : ""}</span></div>
+          <div><b>${b.last ? esc(ago(b.last)) : "–"}</b><span>last heard${b.last ? " · " + tTime(b.last) : ""}</span></div>
+        </div>
+        <h4>Last 90 days</h4><div class="chart" id="spDays"></div>
+        <h4>Recent detections</h4>
+        <div class="card"><div class="log" id="spLog">${b.recent.length ? b.recent.map(d => logRow(Object.assign({ common: b.common, photo: b.photo, slug: b.slug }, d), { date: true, noAvatar: true })).join("") : `<div class="empty-note">Not heard here yet.</div>`}</div></div>
+      </div>
+      <div>
+        <h4>Time of day</h4>
+        <div class="clockwrap" id="spClock"></div>
+        <h4>By month</h4><div class="chart" id="spMonths"></div>
+      </div>
+    </div>`;
+  $("#spX").onclick = () => dlg.close();
+  wireRows($("#spLog"));
+  const dk = b.day_keys;
+  renderBars($("#spDays"), dk.map(k => new Date(k).toLocaleDateString("en-GB", { day: "numeric", month: "short" })), b.days,
+    i => `<b>${new Date(dk[i]).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}</b><br>${b.days[i]} detection${b.days[i] === 1 ? "" : "s"}`, { h: 130, allowEmpty: true });
+  const mn = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  renderBars($("#spMonths"), mn, b.months, i => `<b>${mn[i]}</b><br>${b.months[i]} detection${b.months[i] === 1 ? "" : "s"}`, { h: 140, allowEmpty: true });
+  renderClock($("#spClock"), b.hours);
+}
+$("#spDlg").addEventListener("close", () => {
+  if (audio) audio.pause();
+  try { history.replaceState(null, "", `#${S.span}/${S.date}`); } catch (_) {}
+});
+for (const d of ["#spDlg", "#admDlg", "#loginDlg"]) {
+  $(d).addEventListener("click", e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+}
+
+function renderClock(el, hours) {
+  const R = 120, r0 = 46, mx = Math.max(1, ...hours), size = 2 * R + 64, c = size / 2;
+  let paths = "";
+  for (let h = 0; h < 24; h++) {
+    const a0 = (h / 24) * 2 * Math.PI - Math.PI / 2 + .02, a1 = ((h + 1) / 24) * 2 * Math.PI - Math.PI / 2 - .02;
+    const len = hours[h] ? r0 + 6 + (R - r0 - 6) * Math.sqrt(hours[h] / mx) : r0 + 3;
+    const p = (rad, a) => `${c + rad * Math.cos(a)},${c + rad * Math.sin(a)}`;
+    paths += `<path d="M${p(r0, a0)} L${p(len, a0)} A${len},${len} 0 0 1 ${p(len, a1)} L${p(r0, a1)} A${r0},${r0} 0 0 0 ${p(r0, a0)}z" fill="${heatColor(hours[h], mx)}" data-h="${h}"/>`;
+  }
+  const lbl = [0, 6, 12, 18].map(h => { const a = h / 24 * 2 * Math.PI - Math.PI / 2; return `<text x="${c + (R + 14) * Math.cos(a)}" y="${c + (R + 14) * Math.sin(a) + 4}" text-anchor="middle">${String(h).padStart(2, "0")}</text>`; }).join("");
+  const total = hours.reduce((a, b) => a + b, 0);
+  const peak = total ? hours.indexOf(mx) : -1;
+  el.innerHTML = `<svg viewBox="0 0 ${size} ${size}" width="${size}" style="max-width:100%" role="img" aria-label="Detections by hour of day">
+    <circle cx="${c}" cy="${c}" r="${r0 - 4}" fill="var(--card)"/>${paths}${lbl}
+    <text x="${c}" y="${c - 2}" text-anchor="middle" style="font:600 18px var(--serif);fill:var(--ink)">${peak >= 0 ? String(peak).padStart(2, "0") + ":00" : "–"}</text>
+    <text x="${c}" y="${c + 15}" text-anchor="middle">${peak >= 0 ? "busiest hour" : "no data"}</text></svg>`;
+  $$("path[data-h]", el).forEach(p => {
+    const h = +p.dataset.h;
+    const f = e => showTip(`<b>${String(h).padStart(2, "0")}:00–${String((h + 1) % 24).padStart(2, "0")}:00</b><br>${hours[h]} detection${hours[h] === 1 ? "" : "s"}`, e);
+    p.onmousemove = f; p.onclick = f; p.onmouseleave = hideTip;
+  });
+  $$("text", el).forEach(t => t.style.fill || (t.style.fill = "var(--ink-3)"));
+}
+
+// ---------- calendar ----------
+$("#yPrev").onclick = () => { S.calYear--; loadCalendar(); };
+$("#yNext").onclick = () => { if (S.calYear < new Date().getFullYear()) { S.calYear++; loadCalendar(); } };
+async function loadCalendar() {
+  $("#yLbl").textContent = S.calYear;
+  $("#yNext").disabled = S.calYear >= new Date().getFullYear();
+  const C = await api(`api/calendar?year=${S.calYear}`);
+  const el = $("#cal"), cell = 13, gap = 3, top = 18, left = 28;
+  const jan1 = new Date(S.calYear, 0, 1), offset = (jan1.getDay() + 6) % 7;
+  const days = (new Date(S.calYear + 1, 0, 1) - jan1) / DAY;
+  const mx = Math.max(1, ...Object.values(C.days).map(v => v[0]));
+  const today = isoDate(new Date());
+  let rects = "", months = "";
+  for (let i = 0; i < Math.round(days); i++) {
+    const d = new Date(S.calYear, 0, 1 + i), k = isoDate(d), idx = i + offset, w = Math.floor(idx / 7), dow = idx % 7;
+    const v = C.days[k] ? C.days[k][0] : 0;
+    const future = k > today;
+    rects += `<rect class="d" x="${left + w * (cell + gap)}" y="${top + dow * (cell + gap)}" width="${cell}" height="${cell}" rx="3" fill="${future ? "transparent" : heatColor(v, mx)}" ${future ? 'stroke="var(--line)"' : ""} data-k="${k}"/>`;
+    if (d.getDate() === 1) months += `<text x="${left + w * (cell + gap)}" y="11">${d.toLocaleDateString("en-GB", { month: "short" })}</text>`;
+  }
+  const W = left + 54 * (cell + gap), H = top + 7 * (cell + gap);
+  const dl = ["Mon", "", "Wed", "", "Fri", "", ""].map((t, i) => t ? `<text x="0" y="${top + i * (cell + gap) + 10}">${t}</text>` : "").join("");
+  el.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Detections per day in ${S.calYear}">${months}${dl}${rects}</svg>`;
+  $$("rect.d", el).forEach(r => {
+    const k = r.dataset.k, v = C.days[k];
+    const f = e => showTip(`<b>${new Date(k).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}</b><br>${v ? `${fmtN(v[0])} detections · ${v[1]} species` : "nothing heard"}`, e);
+    r.onmousemove = f; r.onmouseleave = hideTip;
+    r.onclick = () => { if (k > today) return; hideTip(); S.span = "day"; S.date = k; loadPeriod(); $("#logbook").scrollIntoView(); };
+  });
+  // Phones show part of the year: start at the current month, not January.
+  el.scrollLeft = S.calYear === new Date().getFullYear() ? el.scrollWidth : 0;
+  $("#calLegend").innerHTML = `Less ${[0, .15, .35, .6, 1].map(t => `<i style="background:${heatColor(t * mx, mx)}"></i>`).join("")} More`;
+}
+
+// ---------- local list ----------
+$$("#gFilter button").forEach(b => b.onclick = () => { S.gFilter = b.dataset.f; S.gLimit = NARROW ? 24 : 60; savePrefs(); renderGarden(); });
+$("#gSort").onchange = e => { S.gSort = e.target.value; savePrefs(); renderGarden(); };
+let qT = null;
+$("#gSearch").oninput = e => { clearTimeout(qT); qT = setTimeout(() => { S.gQuery = e.target.value.trim().toLowerCase(); S.gLimit = NARROW ? 24 : 60; renderGarden(); }, 150); };
+$("#gMore").onclick = () => { S.gLimit += NARROW ? 24 : 60; renderGarden(); };
+
+async function loadSpecies() {
+  const r = await api("api/species");
+  S.species = r.species;
+  renderGarden();
+}
+function renderGarden() {
+  const all = S.species || [];
+  $$("#gFilter button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.f === S.gFilter)));
+  $("#gSort").value = S.gSort;
+  const expected = all.filter(s => s.tier === 1), heardExp = expected.filter(s => s.n > 0).length;
+  const heard = all.filter(s => s.n > 0).length;
+  const frac = expected.length ? heardExp / expected.length : 0, C = 2 * Math.PI * 32;
+  $("#gProgress").innerHTML = `<svg class="ring" viewBox="0 0 76 76"><circle cx="38" cy="38" r="32" fill="none" stroke="var(--card-3)" stroke-width="7"/>
+      <circle cx="38" cy="38" r="32" fill="none" stroke="var(--accent)" stroke-width="7" stroke-linecap="round" stroke-dasharray="${C * frac} ${C}" transform="rotate(-90 38 38)"/>
+      <text x="38" y="43" text-anchor="middle" style="font:600 15px var(--serif);fill:var(--ink)">${Math.round(frac * 100)}%</text></svg>
+    <div class="t"><b class="num">${fmtN(heard)}</b> <span style="display:inline;color:var(--ink-2)">species heard so far</span>
+      <span>${fmtN(heardExp)} of the ${fmtN(expected.length)} species expected around here, plus ${fmtN(all.filter(s => s.tier > 1).length)} rarer possibilities</span></div>`;
+  let list = all.filter(s =>
+    S.gFilter === "heard" ? s.n > 0 : S.gFilter === "unheard" ? s.n === 0 : S.gFilter === "unusual" ? s.tier > 1 : true);
+  if (S.gQuery) list = list.filter(s => s.common.toLowerCase().includes(S.gQuery) || s.sci.toLowerCase().includes(S.gQuery));
+  list.sort(SORTS[S.gSort] || SORTS.most);
+  const el = $("#gCards");
+  if (!list.length) {
+    el.innerHTML = `<div class="card empty-note" style="grid-column:1/-1">${S.gFilter === "heard" && !S.gQuery ? "No birds heard yet. Switch to <b>&nbsp;All&nbsp;</b> to see what might turn up." : "No birds match."}</div>`;
+    $("#gMore").hidden = true;
+    return;
+  }
+  const mx = Math.max(1, ...list.map(s => s.n));
+  const ranks = Object.fromEntries(all.filter(s => s.n > 0).sort(SORTS.most).map((s, i) => [s.sci, i + 1]));
+  el.innerHTML = list.slice(0, S.gLimit).map(s => birdCard(s, ranks[s.sci], mx, "all")).join("");
+  $("#gMore").hidden = list.length <= S.gLimit;
+  $$(".bird", el).forEach(b => b.onclick = () => openSpecies(b.dataset.slug));
+}
+
+// ---------- boot ----------
+function tickClock() { $("#clock").textContent = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }); }
+setInterval(tickClock, 10000); tickClock();
+setInterval(() => { const a = $("#latestAgo"); if (a && S._latestTs) a.textContent = ago(S._latestTs); }, 30000);
+
+function refreshAll() { pollLive(); loadPeriod(); loadSpecies(); loadCalendar(); }
+let rT = null;
+addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(() => S.period && renderPeriod(S.period), 200); });
+
+(async () => {
+  const m = location.hash.match(/^#(day|week|month|year|all)\/(\d{4}-\d{2}-\d{2})$/);
+  if (m) { S.span = m[1]; S.date = m[2]; }
+  const bird = location.hash.match(/^#bird\/([a-z0-9-]+)$/);
+  try {
+    S.info = await api("api/info");
+    $("#siteTitle").textContent = S.info.title || "Birdsong";
+    $("#siteTagline").textContent = S.info.tagline || "";
+    document.title = `${S.info.title || "Birdsong"}${S.info.tagline ? " · " + S.info.tagline : ""}`;
+  } catch (_) {}
+  await checkMe();
+  refreshAll();
+  if (bird) openSpecies(bird[1]);
+})();
+})();
+</script>
+</body>
+</html>
