@@ -245,7 +245,8 @@ def api_live(app: App, since: int, admin: bool) -> dict:
            "bands": snap.get("bands", 64), "col_rate": snap.get("col_rate", 20),
            "cols": base64.b64encode(snap.get("cols") or b"").decode() if online else "",
            "started": bool(snap), "hearing": [], "recent": [], "today": {"detections": 0, "species": 0, "hours": 0},
-           "rev": "0", "mic_error": bool(snap.get("mic_error"))}
+           "rev": "0", "mic_error": bool(snap.get("mic_error")),
+           "birdweather": bool(app.cfg.get("birdweather_token"))}     # a flag only, never the token
     if admin:
         out.update(peak=snap.get("peak"), clipped_at=snap.get("clipped_at"), mic_error_text=snap.get("mic_error"),
                    low_disk=snap.get("low_disk"))
@@ -394,6 +395,9 @@ def api_admin_status(app: App) -> dict:
                             "COALESCE(SUM(CASE WHEN tier=3 AND review='pending' AND hidden=0 THEN 1 ELSE 0 END),0), "
                             "COALESCE(SUM(hidden),0) FROM detections").fetchone()
             out.update(clips=r[0], clip_bytes=r[1], saved=r[2], pending=r[3], hidden=r[4])
+            bw = dict(con.execute("SELECT status, COUNT(*) FROM birdweather GROUP BY status").fetchall())
+            out["birdweather"] = {"enabled": bool(cfg.get("birdweather_token")), "audio": bool(cfg.get("birdweather_audio")),
+                                  "sent": bw.get("sent", 0), "queued": bw.get("retry", 0), "failed": bw.get("failed", 0)}
         finally:
             con.close()
     return out
@@ -658,7 +662,7 @@ class Handler(BaseHTTPRequestHandler):
         if get:
             admin = self.is_admin()
             if api == "info":
-                return self.send_json(200, {k: app.cfg.get(k) for k in ("title", "tagline", "about")})
+                return self.send_json(200, {k: app.cfg.get(k) for k in ("title", "tagline", "about", "microphone")})
             if api == "live":
                 try:
                     since = int(p.get("since") or 0)

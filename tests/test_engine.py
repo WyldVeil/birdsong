@@ -132,6 +132,94 @@ class Events(unittest.TestCase):
         self.assertEqual(e.db.execute("SELECT tier, review FROM detections").fetchone(), (3, "pending"))
 
 
+class BirdWeather(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.db = E.connect(os.path.join(self.tmp, "birds.db"))
+        self.cfg = dict(C.DEFAULTS, birdweather_token="TOKEN123")
+        self.names = {"Erithacus rubecula": "European Robin", "Turdus merula": "Eurasian Blackbird"}
+        self.sent = []
+
+    def tearDown(self):
+        self.db.close()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def add(self, sci, start, **kw):
+        cols = dict(sci=sci, start=start, end=start + 3, day="2026-10-02", hour=12, conf=0.9, hits=2, tier=1, open=0)
+        cols.update(kw)
+        self.db.execute(f"INSERT INTO detections({','.join(cols)}) VALUES ({','.join('?' * len(cols))})", list(cols.values()))
+        self.db.commit()
+
+    def ok(self, url, body=None, ctype=None):
+        self.sent.append((url, body, ctype))
+        if "/soundscapes" in url:
+            return {"success": True, "soundscape": {"id": 77}}
+        return {"success": True, "detection": {"id": 1}}
+
+    def status(self):
+        return [r[0] for r in self.db.execute("SELECT status FROM birdweather ORDER BY det_id")]
+
+    def test_new_public_detections_only(self):
+        import json
+        t = 1_800_000_000.0
+        E.birdweather_pass(self.tmp, self.db, self.cfg, self.names, now=t, request=self.ok)   # starts the clock
+        self.add("Erithacus rubecula", t - 60)                          # earlier: not backfilled
+        self.add("Turdus merula", t + 10, conf=0.8123)
+        self.add("Erithacus rubecula", t + 20, hidden=1)
+        self.add("Turdus migratorius", t + 30, tier=3, review="pending")
+        self.add("Erithacus rubecula", t + 40, open=1)
+        E.birdweather_pass(self.tmp, self.db, self.cfg, self.names, now=t + 100, request=self.ok)
+        self.assertEqual(len(self.sent), 1)
+        url, body, ctype = self.sent[0]
+        self.assertTrue(url.endswith("/stations/TOKEN123/detections"))
+        p = json.loads(body)
+        self.assertEqual((p["commonName"], p["scientificName"], p["confidence"]), ("Eurasian Blackbird", "Turdus merula", 0.8123))
+        self.assertNotIn("lat", p)
+        self.assertNotIn("soundscapeId", p)
+        E.birdweather_pass(self.tmp, self.db, self.cfg, self.names, now=t + 200, request=self.ok)
+        self.assertEqual(len(self.sent), 1)
+
+    def test_audio_is_flac_and_never_speech(self):
+        import json
+        t = 1_800_000_000.0
+        self.cfg["birdweather_audio"] = True
+        E.birdweather_pass(self.tmp, self.db, self.cfg, self.names, now=t, request=self.ok)
+        os.makedirs(os.path.join(self.tmp, "clips", "m"))
+        clip = E.encode_clip(demo.synth_song(4, 3), os.path.join(self.tmp, "clips", "m", "1"))
+        rel = os.path.relpath(clip, self.tmp).replace(os.sep, "/")
+        self.add("Turdus merula", t + 10, clip=rel)
+        self.add("Turdus merula", t + 20, clip=rel, speech=1)
+        E.birdweather_pass(self.tmp, self.db, self.cfg, self.names, now=t + 100, request=self.ok)
+        kinds = [(u.rsplit("/", 1)[-1].split("?")[0], c) for u, _b, c in self.sent]
+        self.assertEqual(kinds, [("soundscapes", "audio/flac"), ("detections", "application/json"),
+                                 ("detections", "application/json")])
+        self.assertEqual(self.sent[0][1][:4], b"fLaC")
+        self.assertEqual(json.loads(self.sent[1][1])["soundscapeId"], 77)
+        self.assertNotIn("soundscapeId", json.loads(self.sent[2][1]))      # speech: no audio
+
+    def test_retry_fail_and_bad_token(self):
+        t = 1_800_000_000.0
+        E.birdweather_pass(self.tmp, self.db, self.cfg, self.names, now=t, request=self.ok)
+        self.add("Turdus merula", t + 10)
+
+        def down(*a, **k):
+            raise E.BWError(0, "network: down")
+        E.birdweather_pass(self.tmp, self.db, self.cfg, self.names, now=t + 100, request=down)
+        self.assertEqual(self.status(), ["retry"])
+        E.birdweather_pass(self.tmp, self.db, self.cfg, self.names, now=t + 1000, request=self.ok)
+        self.assertEqual(self.status(), ["sent"])
+        self.add("Turdus merula", t + 2000)
+
+        def denied(*a, **k):
+            raise E.BWError(401, "HTTP 401")
+        self.assertTrue(E.birdweather_pass(self.tmp, self.db, self.cfg, self.names, now=t + 3000, request=denied)["auth"])
+
+    def test_off_without_token(self):
+        self.add("Turdus merula", 1.0)
+        c = E.birdweather_pass(self.tmp, self.db, dict(C.DEFAULTS), self.names, request=self.ok)
+        self.assertEqual((c["sent"], self.sent), (0, []))
+
+
 class Demo(unittest.TestCase):
     def test_seed(self):
         tmp = tempfile.mkdtemp()

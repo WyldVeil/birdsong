@@ -20,6 +20,7 @@ vocal" is used only to flag clips containing speech, whose spectrograms
 are then shown to the admin only.
 """
 
+import io
 import json
 import logging
 import os
@@ -30,9 +31,11 @@ import sqlite3
 import struct
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import zlib
+from datetime import datetime
 
 import numpy as np
 
@@ -111,6 +114,11 @@ CREATE TABLE IF NOT EXISTS detections (
 CREATE INDEX IF NOT EXISTS det_start ON detections(start);
 CREATE INDEX IF NOT EXISTS det_day ON detections(day);
 CREATE INDEX IF NOT EXISTS det_sci ON detections(sci, start);
+CREATE TABLE IF NOT EXISTS birdweather (
+    det_id INTEGER PRIMARY KEY, status TEXT NOT NULL, tries INTEGER NOT NULL DEFAULT 0,
+    remote_id INTEGER, error TEXT NOT NULL DEFAULT '', at REAL NOT NULL DEFAULT 0, next_try REAL NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS daily (
     day TEXT PRIMARY KEY, windows INTEGER NOT NULL DEFAULT 0, seconds REAL NOT NULL DEFAULT 0
 );
@@ -702,6 +710,146 @@ def photo_fetcher(data: str, stop: threading.Event):
             log.debug(f"photo for {sci} failed: {e}")
         db.commit()
         stop.wait(3)
+
+
+# ---------------------------------------------------------------- BirdWeather
+#
+# Optional: stream detections to a BirdWeather station (app.birdweather.com),
+# the public map of listening stations run with the BirdNET team. Each new
+# detection is posted once its bird stops singing. No coordinates are sent:
+# BirdWeather uses the station's own map location, which you choose when
+# creating it. Audio is off unless birdweather_audio is true, and clips that
+# contain speech are never sent. Hidden detections and unconfirmed rarities
+# are never sent. Only detections made after it was switched on are sent.
+
+BW_API = "https://app.birdweather.com/api/v1/stations/{token}{what}"
+BW_MAX_TRIES = 12
+
+
+class BWError(Exception):
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+
+
+def bw_request(url: str, body=None, ctype: str = "application/json") -> dict:
+    """GET (body None) or POST, returning the JSON reply. The token is part of
+    the URL, so no error message ever includes the URL."""
+    req = urllib.request.Request(url, data=body, method="GET" if body is None else "POST",
+                                 headers={"Content-Type": ctype, "User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        try:
+            detail = e.read()[:200].decode("utf-8", "replace")
+        except Exception:
+            detail = ""
+        raise BWError(e.code, f"HTTP {e.code} {detail}".strip()) from None
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        raise BWError(0, f"network: {getattr(e, 'reason', e)}") from None
+
+
+def bw_station(token: str) -> dict:
+    """The station a token belongs to (used by setup to confirm the token)."""
+    return bw_request(BW_API.format(token=urllib.parse.quote(token, safe=""), what=""))
+
+
+def _iso(ts: float) -> str:
+    return datetime.fromtimestamp(ts).astimezone().isoformat(timespec="milliseconds")
+
+
+def _flac(data: str, rel_clip: str):
+    """BirdWeather only accepts FLAC: re-encode the saved clip in memory."""
+    import soundfile as sf
+    try:
+        x, rate = sf.read(os.path.join(data, rel_clip), dtype="float32")
+        buf = io.BytesIO()
+        sf.write(buf, x, rate, format="FLAC")
+        return buf.getvalue()
+    except Exception as e:
+        log.debug(f"flac encode failed for {rel_clip}: {e}")
+        return None
+
+
+def birdweather_pass(data: str, db, cfg: dict, names: dict, now: float = None, request=bw_request,
+                     limit: int = 20) -> dict:
+    """Send what's due, once. Returns counts. `request` is swappable for tests."""
+    now = now or time.time()
+    token = (cfg.get("birdweather_token") or "").strip()
+    counts = {"sent": 0, "retry": 0, "failed": 0, "auth": False}
+    if not token:
+        return counts
+    base = BW_API.format(token=urllib.parse.quote(token, safe=""), what="")
+    row = db.execute("SELECT v FROM kv WHERE k='birdweather_since'").fetchone()
+    if row is None:
+        db.execute("INSERT INTO kv(k, v) VALUES ('birdweather_since', ?)", (str(now),))
+        db.commit()
+        since = now
+    else:
+        since = float(row[0])
+    cols = [c[0] for c in db.execute("SELECT * FROM detections LIMIT 0").description] + ["bw_tries"]
+    due = db.execute(
+        "SELECT d.*, b.tries FROM detections d LEFT JOIN birdweather b ON b.det_id=d.id "
+        "WHERE d.open=0 AND d.start>=? AND d.hidden=0 AND (d.tier<3 OR d.review='confirmed') "
+        "AND (b.det_id IS NULL OR (b.status='retry' AND b.next_try<=?)) ORDER BY d.start LIMIT ?",
+        (since, now, limit)).fetchall()
+    pad = float(cfg.get("clip_pad_s", 2.0))
+    for values in due:
+        d = dict(zip(cols, values))
+        tries = (d["bw_tries"] or 0) + 1
+        payload = {"timestamp": _iso(d["start"]), "commonName": names.get(d["sci"], d["sci"]),
+                   "scientificName": d["sci"], "confidence": round(float(d["conf"]), 4)}
+        try:
+            if cfg.get("birdweather_audio") and d["clip"] and not d["speech"]:
+                audio = _flac(data, d["clip"])
+                if audio:
+                    sc = request(base + "/soundscapes?timestamp=" + urllib.parse.quote(_iso(d["start"] - pad)),
+                                 audio, "audio/flac")
+                    sid = (sc.get("soundscape") or {}).get("id")
+                    if sid:
+                        payload.update(soundscapeId=sid, soundscapeStartTime=pad,
+                                       soundscapeEndTime=round(pad + d["end"] - d["start"], 2))
+            res = request(base + "/detections", json.dumps(payload).encode(), "application/json")
+            if not res.get("success", True):
+                raise BWError(422, f"rejected: {json.dumps(res)[:150]}")
+            db.execute("INSERT OR REPLACE INTO birdweather(det_id, status, tries, remote_id, error, at, next_try) "
+                       "VALUES (?, 'sent', ?, ?, '', ?, 0)", (d["id"], tries, (res.get("detection") or {}).get("id"), now))
+            counts["sent"] += 1
+            log.info(f"BirdWeather: sent {payload['commonName']}")
+        except BWError as e:
+            if e.status in (401, 403, 404):
+                counts["auth"] = True
+                log.error(f"BirdWeather rejected the station token ({e}). Check it with `setup`.")
+                db.execute("INSERT OR REPLACE INTO birdweather(det_id, status, tries, error, at, next_try) "
+                           "VALUES (?, 'retry', ?, ?, ?, ?)", (d["id"], tries, str(e)[:200], now, now + 3600))
+                db.commit()
+                break
+            permanent = 400 <= e.status < 500 and e.status != 429
+            status = "failed" if permanent or tries >= BW_MAX_TRIES else "retry"
+            if status == "failed":
+                log.warning(f"BirdWeather: gave up on detection {d['id']}: {e}")
+            db.execute("INSERT OR REPLACE INTO birdweather(det_id, status, tries, error, at, next_try) "
+                       "VALUES (?, ?, ?, ?, ?, ?)",
+                       (d["id"], status, tries, str(e)[:200], now, 0 if status == "failed" else now + min(3600, 30 * 2 ** tries)))
+            counts[status] += 1
+            if not permanent:
+                db.commit()
+                break                    # network/server trouble: wait for the next pass
+        db.commit()
+    return counts
+
+
+def birdweather_uploader(data: str, cfg: dict, names: dict, stop: threading.Event):
+    db = connect(os.path.join(data, "birds.db"))
+    log.info(f"BirdWeather: sharing detections ({'with' if cfg.get('birdweather_audio') else 'without'} audio)")
+    while not stop.is_set():
+        try:
+            wait = 3600 if birdweather_pass(data, db, cfg, names)["auth"] else 20
+        except Exception as e:
+            log.exception(f"BirdWeather upload pass failed: {e}")
+            wait = 120
+        stop.wait(wait)
 
 
 # ---------------------------------------------------------------- file input

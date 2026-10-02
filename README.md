@@ -41,6 +41,9 @@ double-click; no Python install, no admin rights, no account, no cloud.
   house picks up more than birds.
 - **Looks after itself.** Clips are deleted after 30 days unless starred, total
   clip space is capped, and recording pauses if the disk gets low.
+- **Optional BirdWeather sharing.** Your detections can appear on
+  [BirdWeather](https://app.birdweather.com/)'s public world map of listening
+  stations.
 - **Light on resources.** It uses a few percent of one CPU core on a desktop PC and ~250 MB of RAM. A Raspberry Pi 4 or 5 copes fine.
 
 ## Quick start
@@ -93,10 +96,11 @@ needed. The admin login is `admin` / `demo`.
 | Question | Why |
 |---|---|
 | **Where is the microphone?** Type a town, postcode, or `lat, lon`. | BirdNET uses it to know which birds live near you, which cuts out most false identifications. It's rounded to ~1 km, stored only on your computer, and never shown on the page. |
-| **Which microphone?** | Lists your inputs and records 4 seconds to check the level: not silent, not clipping. |
+| **Which microphone?** | Lists your inputs and records 4 seconds to check the level: not silent, not clipping. You can also name the mic to show it at the bottom of the page. |
 | **Admin password** | Lets you play, keep and delete recordings, and review rare birds. Username is `admin`. |
 | **Who can open the page?** | **Just this computer** (localhost, the default), **devices on my home network** (phones and tablets on your Wi-Fi), or **the internet** through your own domain. You can also hide the page under a random secret path. |
 | **Title / subtitle** | What the page calls itself. |
+| **Share on BirdWeather?** | Optional. Streams detections to BirdWeather's public map (see below). |
 
 Change any of it later with `run.bat setup` / `./run.sh setup`.
 
@@ -133,6 +137,7 @@ Use `run.bat <command>` on Windows and `./run.sh <command>` elsewhere.
 | `devices` | List microphones |
 | `mic-test` | Record 5 seconds and report the level |
 | `password` | Change the admin password |
+| `birdweather` / `birdweather --off` | Share detections on BirdWeather, or stop |
 | `analyse FILE…` | Identify birds in existing recordings (WAV, FLAC, OGG, MP3) and add them to the log |
 | `autostart install` / `remove` / `status` | Start automatically (see below) |
 | `selftest` | Run the tests and a real identification check |
@@ -160,10 +165,22 @@ On **macOS** you'll be asked to allow microphone access the first time.
 
 ### The microphone
 
-- **Placement matters more than the microphone.** An open window or outdoors
+**Recommended: a Clippy EM272 mono microphone** (sold by Micbooster), which is
+what the author's station uses. It's built on the Primo EM272 capsule, which
+has very low self-noise, so it picks up far quieter, more distant birdsong than
+a typical USB mic. It's much better than a phone's built-in mic, which is noisy
+and processed to suit speech. It's a small 3.5 mm mic that plugs into a
+computer's pink microphone jack (which supplies the "plug-in power" it needs) or
+a USB sound card's mic input. Get the *mono* version: BirdNET listens in mono.
+
+Any microphone works, though. A cheap USB mic will catch nearby birds.
+
+- **Placement matters as much as the microphone.** An open window or outdoors
   is far better than behind glass. Keep it away from fans, fridges and road
-  noise if you can. A cheap USB mic works; a decent omnidirectional electret
-  mic on a USB sound card works very well.
+  noise if you can.
+- **Sensitive mics on onboard sound cards:** with a mic like the EM272, the
+  input slider at 100% can add +60 dB of gain and clip constantly. Somewhere
+  around 60–70% is usually right; check with `mic-test`.
 - **Level:** run `mic-test`. Aim for the room's background noise around
   −60 to −35 dBFS with no clipping. If it clips, turn the input volume down in
   your sound settings (Windows: *Settings → System → Sound → Input*; Linux: your
@@ -171,6 +188,48 @@ On **macOS** you'll be asked to allow microphone access the first time.
   clipped in the last hour.
 - **Bats** aren't detected. They call in ultrasound, which needs a special
   microphone and a different model.
+
+### Share on BirdWeather (optional)
+
+[BirdWeather](https://app.birdweather.com/) is a free public map of bird
+listening stations around the world, run together with the BirdNET team.
+Birdsong can stream each new detection to it as it happens.
+
+1. **Make a free account** at
+   [app.birdweather.com/login](https://app.birdweather.com/login). You don't
+   need to buy anything. Their own hardware (the "PUC") is optional; a
+   computer running BirdNET counts as a station.
+2. **Add a station** at
+   [app.birdweather.com/account/stations](https://app.birdweather.com/account/stations).
+   - **Location:** the pin is shown publicly. Put it somewhere *general*, such
+     as a nearby park or the middle of your town, not your house, or turn on
+     the station's location privacy. Birdsong never sends coordinates;
+     BirdWeather files every detection at the station's pin.
+   - **Name:** this is public too, so pick something that doesn't identify you.
+3. **Copy the station token** from the station's page.
+4. **Run** `run.bat birdweather` (Windows) or `./run.sh birdweather`. Paste the
+   token, which Birdsong checks with BirdWeather and confirms the station's name,
+   and choose whether to send audio. Then restart Birdsong. (`setup` asks the
+   same questions as its last step.)
+
+**What gets sent:**
+
+- **Each detection, once:** species, time and confidence, sent once the bird
+  has stopped singing. Only detections made after you switch sharing on are
+  sent; nothing older.
+- **Never sent:** detections you've hidden as admin, and rarities you haven't
+  confirmed.
+- **Audio is off by default.** If you turn it on, each detection includes a
+  short FLAC clip, but **clips where speech was heard are never sent**.
+- **If BirdWeather or your internet is down,** detections queue and are retried
+  later. If the token is rejected, uploads pause and the log says why.
+- **Status:** the admin panel shows how many were sent, queued or failed. The
+  page footer mentions that detections are shared with BirdWeather, linking only
+  to its main map, not your station.
+- **Turn it off** with `run.bat birdweather --off` / `./run.sh birdweather --off`.
+
+Note that anything sent to BirdWeather is public: the station's name, pin and
+the times it hears birds.
 
 ### Watching from your phone, or from anywhere
 
@@ -224,6 +283,9 @@ the file by hand (stop Birdsong first):
 | `behind_proxy` | false | Trust `X-Forwarded-*` headers from your reverse proxy |
 | `audio_backend` / `device` | auto / default | Microphone (see `devices`) |
 | `fetch_photos` | true | Download photos and descriptions from Wikipedia |
+| `birdweather_token` | *(empty = off)* | BirdWeather station token (set with `birdweather`) |
+| `birdweather_audio` | false | Also send a FLAC clip with each detection (never clips with speech) |
+| `microphone` | *(empty)* | Microphone name shown at the bottom of the page |
 | `title` / `tagline` / `about` | | Text on the page |
 
 ## Privacy
@@ -240,7 +302,9 @@ the file by hand (stop Birdsong first):
   - From a git checkout only (release zips already include these): the
     BirdNET model from GitHub once, and uv, Python and the libraries from
     GitHub and PyPI on the first run.
-- **Nothing about what you hear is sent anywhere.**
+  - BirdWeather, **only if you switch it on** (see above).
+- **Nothing about what you hear is sent anywhere** unless you turn on
+  BirdWeather sharing; even then, audio is off unless you choose it.
 
 ## Updating and uninstalling
 

@@ -111,6 +111,14 @@ class Basics(Server):
         self.assertEqual(info["title"], "Birdsong")
         self.assertNotIn("latitude", json.dumps(info))
 
+    def test_birdweather_token_never_public(self):
+        self.app.cfg["birdweather_token"] = "SECRETTOKEN99"
+        live = self.json("api/live")
+        self.assertTrue(live["birdweather"])
+        for path in ("api/live", "api/info", "api/period", "api/species"):
+            self.assertNotIn("SECRETTOKEN99", json.dumps(self.json(path)))
+        self.assertNotIn("SECRETTOKEN99", json.dumps(self.json("api/admin/status", admin=True)))
+
 
 class Visibility(Server):
     def test_public_hides_hidden_and_pending(self):

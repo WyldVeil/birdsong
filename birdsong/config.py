@@ -31,6 +31,7 @@ DEFAULTS = {
     "behind_proxy": False,        # trust X-Forwarded-For/-Proto (nginx, Caddy, Cloudflare Tunnel)
     "title": "Birdsong",
     "tagline": "Live from the garden",
+    "microphone": "",             # optional, shown in the page footer, e.g. "Clippy EM272 mono microphone"
     "about": "A microphone is listening around the clock. The moment a bird is identified it appears here, usually within a few seconds.",
     "open_browser": True,
 
@@ -60,6 +61,10 @@ DEFAULTS = {
     "max_clip_mb": 4000,
     "min_free_gb": 5,
     "fetch_photos": True,
+
+    # --- BirdWeather (optional; see README). Empty token = off.
+    "birdweather_token": "",
+    "birdweather_audio": False,   # also send a short FLAC clip (never ones containing speech)
 }
 
 

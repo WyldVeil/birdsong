@@ -164,6 +164,8 @@ def wizard(cfg: dict, data: str) -> dict:
             print("   ✓ Sounds fine.")
         if not yes("   Test again / choose another?", False):
             break
+    cfg["microphone"] = ask("   Which microphone is it? Shown at the bottom of the page; leave blank to hide",
+                            cfg.get("microphone", ""))
 
     # 3. admin password
     print("\n3. Admin password (lets you play and keep recordings; visitors can't).")
@@ -210,6 +212,14 @@ def wizard(cfg: dict, data: str) -> dict:
     cfg["title"] = ask("   Title", cfg.get("title", "Birdsong"))
     cfg["tagline"] = ask("   Subtitle", cfg.get("tagline", "Live from the garden"))
 
+    # 6. BirdWeather
+    print("\n6. Share detections on BirdWeather's public map? (optional, free; see README)")
+    on = bool(cfg.get("birdweather_token"))
+    if yes("   Share with BirdWeather?", on):
+        birdweather_setup(cfg)
+    else:
+        cfg["birdweather_token"] = ""
+
     C.save(cfg, data)
     print("\n  Saved. The page will be at:")
     for u in page_urls(cfg):
@@ -218,6 +228,51 @@ def wizard(cfg: dict, data: str) -> dict:
         print(f"  Point your reverse proxy / tunnel at http://127.0.0.1:{cfg['port']} (see README).")
     print()
     return cfg
+
+
+def birdweather_setup(cfg: dict) -> None:
+    """Ask for a station token, check it with BirdWeather, choose audio or not."""
+    from . import engine as E
+    while True:
+        cur = cfg.get("birdweather_token") or ""
+        tok = ask("   Station token (from app.birdweather.com/account/stations)",
+                  (cur[:4] + "…" + cur[-4:]) if cur else "")
+        if cur and tok == cur[:4] + "…" + cur[-4:]:
+            tok = cur
+        tok = tok.strip()
+        if not tok:
+            cfg["birdweather_token"] = ""
+            print("   Not sharing.")
+            return
+        try:
+            st = E.bw_station(tok)
+        except E.BWError as e:
+            if e.status in (401, 403, 404):
+                print("   BirdWeather doesn't recognise that token. Copy it again from your station page.")
+                continue
+            print(f"   Couldn't reach BirdWeather to check it ({e}); saving it anyway.")
+            st = {}
+        if st:
+            print(f"   ✓ Station #{st.get('id')} \"{st.get('name')}\"")
+            if not st.get("locationPrivacy"):
+                print("   Tip: its map pin is public. Put it somewhere general (not your house), or turn on")
+                print("        location privacy, in the station's settings on BirdWeather.")
+        cfg["birdweather_token"] = tok
+        break
+    print("   Detections are sent without coordinates (BirdWeather uses the station's pin).")
+    cfg["birdweather_audio"] = yes("   Also send a short audio clip with each detection? Clips with speech are never sent",
+                                   bool(cfg.get("birdweather_audio")))
+
+
+def cmd_birdweather(args, data):
+    cfg = C.load(data)
+    if args.off:
+        cfg["birdweather_token"] = ""
+        print("BirdWeather sharing switched off.")
+    else:
+        birdweather_setup(cfg)
+    C.save(cfg, data)
+    print("Saved. Restart Birdsong for it to take effect.")
 
 
 # ---------------------------------------------------------------- run
@@ -249,6 +304,10 @@ def cmd_run(args, data):
     threading.Thread(target=E.housekeeping, args=(eng, stop), name="housekeeping", daemon=True).start()
     if cfg.get("fetch_photos", True):
         threading.Thread(target=E.photo_fetcher, args=(data, stop), name="photos", daemon=True).start()
+    if cfg.get("birdweather_token"):
+        names = dict(zip(eng.net.sci, eng.net.common))
+        threading.Thread(target=E.birdweather_uploader, args=(data, cfg, names, stop),
+                         name="birdweather", daemon=True).start()
 
     app = web.App(data, cfg, live=eng)
     try:
@@ -427,6 +486,8 @@ def main(argv=None):
     p.add_argument("--no-photos", action="store_true")
     p = sub.add_parser("autostart", help="start Birdsong automatically when you log in / at boot")
     p.add_argument("action", choices=["install", "remove", "status"])
+    p = sub.add_parser("birdweather", help="share detections with BirdWeather (or --off)")
+    p.add_argument("--off", action="store_true")
     p = sub.add_parser("selftest", help="run the tests and a real detection check")
     p.add_argument("--quick", action="store_true", help="unit tests only (no downloads)")
     args = ap.parse_args(argv)
@@ -437,4 +498,4 @@ def main(argv=None):
         args.cmd, args.port, args.no_browser = "run", None, False
     {"run": cmd_run, "setup": cmd_setup, "devices": cmd_devices, "mic-test": cmd_mictest,
      "password": cmd_password, "analyse": cmd_analyse, "demo": cmd_demo, "autostart": cmd_autostart,
-     "selftest": cmd_selftest}[args.cmd](args, data)
+     "birdweather": cmd_birdweather, "selftest": cmd_selftest}[args.cmd](args, data)

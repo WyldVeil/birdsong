@@ -1,6 +1,6 @@
 [project]
 name = "birdsong"
-version = "1.0.0"
+version = "1.1.0"
 description = "A 24/7 bird sound identifier (BirdNET) with a live web page, for Windows, Linux, macOS and Raspberry Pi"
 readme = "README.md"
 license = { text = "MIT" }

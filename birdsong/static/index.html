@@ -323,6 +323,7 @@ dialog::backdrop { background: rgba(5,8,7,.66); backdrop-filter: blur(6px); -web
 .adm .note { font-size: 13px; color: var(--ink-3); line-height: 1.5; }
 
 footer { margin: 80px 0 40px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--ink-3); font-size: 12.5px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 14px; }
+footer .mic-note { display: block; margin-top: 8px; }
 footer button { background: none; border: 0; color: var(--ink-3); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; padding: 0; font-size: 12.5px; }
 footer a { color: var(--ink-2); }
 .skel { background: linear-gradient(90deg, var(--card-2), var(--card-3), var(--card-2)); background-size: 200% 100%; animation: sk 1.4s linear infinite; }
@@ -464,7 +465,8 @@ footer a { color: var(--ink-2); }
   </section>
 
   <footer>
-    <div>Identification by <a href="https://birdnet.cornell.edu/" target="_blank" rel="noopener noreferrer">BirdNET</a> (K. Lisa Yang Center for Conservation Bioacoustics, Cornell Lab of Ornithology &amp; Chemnitz University of Technology). Photos and descriptions from Wikipedia and Wikimedia Commons; credits on each bird. Detections are automatic and can be wrong.</div>
+    <div>Identification by <a href="https://birdnet.cornell.edu/" target="_blank" rel="noopener noreferrer">BirdNET</a> (K. Lisa Yang Center for Conservation Bioacoustics, Cornell Lab of Ornithology &amp; Chemnitz University of Technology). Photos and descriptions from Wikipedia and Wikimedia Commons; credits on each bird. Detections are automatic and can be wrong.<span id="bwNote" hidden> They're also shared with <a href="https://app.birdweather.com/" target="_blank" rel="noopener noreferrer">BirdWeather</a>, a public map of listening stations around the world.</span>
+      <span class="mic-note" id="micNote" hidden></span></div>
     <div><button id="adminBtn" type="button">Admin</button></div>
   </footer>
 </div>
@@ -686,6 +688,7 @@ function renderLive(L) {
     h.innerHTML = `<span class="muted">Quiet at the moment. A new bird shows up here within seconds.</span>`;
   } else h.innerHTML = "";
 
+  $("#bwNote").hidden = !L.birdweather;
   renderLatest(L.recent && L.recent[0]);
   renderStrip(L.recent || []);
 
@@ -1066,6 +1069,7 @@ async function openAdmin() {
       <div><b>${bytes(st.photos_bytes)}</b><span>bird photos</span></div>
       <div><b class="${e.mic_error ? "down" : clipped ? "down" : "up"}">${e.mic_error ? "Error" : clipped ? "Clipping" : "OK"}</b><span>microphone${e.level_db != null ? " · " + Math.round(e.level_db) + " dB" : ""}</span></div>
       <div><b>${fmtN(st.pending)}</b><span>rarities to review</span></div>
+      <div><b class="${st.birdweather && st.birdweather.failed ? "down" : ""}">${st.birdweather && st.birdweather.enabled ? fmtN(st.birdweather.sent || 0) : "Off"}</b><span>sent to BirdWeather${st.birdweather && st.birdweather.enabled ? ` (${st.birdweather.audio ? "with" : "no"} audio)${st.birdweather.queued ? ` · ${fmtN(st.birdweather.queued)} queued` : ""}${st.birdweather.failed ? ` · ${fmtN(st.birdweather.failed)} failed` : ""}` : ""}</span></div>
     </div>
     <p class="note">Clips are kept ${cfg.clip_days} days, capped at ${fmtN(cfg.max_clip_mb)} MB (oldest go first), and nothing new is recorded if the drive drops below ${cfg.min_free_gb} GB free. Starred clips are never deleted. Thresholds: ${pct(cfg.min_conf)} expected species, ${pct(cfg.unusual_conf)} unusual, ${pct(cfg.vagrant_conf)} rarities (which stay hidden from the public until you confirm them).${e.mic_error ? `<br><b class="down">Mic: ${esc(e.mic_error)}</b>` : ""}${clipped ? `<br><b class="down">The mic clipped in the last hour. Lower the Rear Microphone level a little.</b>` : ""}</p>
     <div><h4 class="serif" style="margin:0 0 8px;font-size:18px">Review, hidden &amp; saved</h4>
@@ -1253,6 +1257,7 @@ addEventListener("resize", () => { clearTimeout(rT); rT = setTimeout(() => S.per
     $("#siteTitle").textContent = S.info.title || "Birdsong";
     $("#siteTagline").textContent = S.info.tagline || "";
     document.title = `${S.info.title || "Birdsong"}${S.info.tagline ? " · " + S.info.tagline : ""}`;
+    if (S.info.microphone) { $("#micNote").textContent = `Listening with: ${S.info.microphone}`; $("#micNote").hidden = false; }
   } catch (_) {}
   await checkMe();
   refreshAll();
