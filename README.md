@@ -192,7 +192,9 @@ Any microphone works, though. A cheap USB mic will catch nearby birds.
 ### Share on BirdWeather (optional)
 
 [BirdWeather](https://app.birdweather.com/) is a free public map of bird
-listening stations around the world, run together with the BirdNET team.
+listening stations around the world, powered by BirdNET. Its data has been
+used in published research, for example a 2025 *Science* study of how light
+pollution lengthens birds' singing day, built on over 60 million detections.
 Birdsong can stream each new detection to it as it happens.
 
 1. **Make a free account** at

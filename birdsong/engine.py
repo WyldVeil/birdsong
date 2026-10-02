@@ -715,7 +715,7 @@ def photo_fetcher(data: str, stop: threading.Event):
 # ---------------------------------------------------------------- BirdWeather
 #
 # Optional: stream detections to a BirdWeather station (app.birdweather.com),
-# the public map of listening stations run with the BirdNET team. Each new
+# the public map of BirdNET-powered listening stations. Each new
 # detection is posted once its bird stops singing. No coordinates are sent:
 # BirdWeather uses the station's own map location, which you choose when
 # creating it. Audio is off unless birdweather_audio is true, and clips that
