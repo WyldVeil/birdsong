@@ -1,5 +1,8 @@
 # Birdsong
 
+[![Latest release](https://img.shields.io/github/v/release/WyldVeil/birdsong)](https://github.com/WyldVeil/birdsong/releases/latest)
+[![CI](https://github.com/WyldVeil/birdsong/actions/workflows/ci.yml/badge.svg)](https://github.com/WyldVeil/birdsong/actions/workflows/ci.yml)
+
 **A 24/7 bird sound identifier with a live web page.** Plug a microphone into
 your computer, point it at a window or the garden, and Birdsong listens around
 the clock. It identifies birds with [BirdNET](https://birdnet.cornell.edu/)
@@ -231,12 +234,12 @@ the file by hand (stop Birdsong first):
 - **Your location** is used only to pick likely species, rounded to ~1 km, and
   never sent to the page.
 - **The only connections Birdsong makes:**
-  - GitHub, once, for the BirdNET model.
   - Wikipedia / Wikimedia Commons, for bird photos and descriptions.
   - OpenStreetMap Nominatim, only during setup and only if you type a place
     name rather than coordinates.
-  - The launchers also download uv and Python from GitHub and PyPI on the first
-    run.
+  - From a git checkout only (release zips already include these): the
+    BirdNET model from GitHub once, and uv, Python and the libraries from
+    GitHub and PyPI on the first run.
 - **Nothing about what you hear is sent anywhere.**
 
 ## Updating and uninstalling
@@ -254,6 +257,7 @@ the file by hand (stop Birdsong first):
 | *"Microphone offline"* on the page | Run `devices` and `mic-test`; check the mic is plugged in and not muted; rerun `setup` to pick it again. Logs are in `data/birdsong.log`. |
 | No birds after hours | Is the window shut? Try `mic-test` while you whistle or play a bird video near it. Lowering `min_conf` to 0.6 catches more birds, at the cost of more mistakes. |
 | Too many wrong birds | Raise `min_conf`, hide them as admin, and check your location in `setup`. |
+| Linux/Mac: `permission denied` running `./run.sh` | Your unzip tool dropped the permission. Run `sh run.sh` instead. |
 | Port 8080 already in use | `run.bat --port 9000`, or change it in `setup`. |
 | Linux: no audio devices | Install PortAudio (`sudo apt install libportaudio2`) or PulseAudio/PipeWire tools (`pulseaudio-utils`). Headless: `alsa-utils` gives `arecord`. |
 | Admin login doesn't stick behind an HTTPS proxy | Set `behind_proxy` to `true` (setup does this when you choose *The internet*). |
@@ -275,9 +279,11 @@ python -m venv .venv
 - **Birdsong code:** MIT licence (see [LICENSE](LICENSE)).
 - **BirdNET** model by the K. Lisa Yang Center for Conservation Bioacoustics at
   the Cornell Lab of Ornithology and Chemnitz University of Technology,
-  [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). It's
-  downloaded on first run, not included here. The model licence is
-  **non-commercial**, so don't use Birdsong commercially.
+  [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). It
+  isn't in this repository: the release zips include an unmodified copy (with
+  its licence in `data/model/LICENSE-BirdNET.txt`), and a git checkout
+  downloads it on first start. The model licence is **non-commercial**, so
+  don't use Birdsong commercially.
 - **Bird photos and descriptions** come from Wikipedia and Wikimedia Commons
   under their own licences. Each photo's author and licence is shown on the
   bird's page.
