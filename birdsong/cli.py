@@ -377,7 +377,7 @@ def cmd_selftest(args, data):
     from . import engine as E
     tmp = tempfile.mkdtemp(prefix="birdsong-selftest-")
     try:
-        print("Model check: downloading BirdNET and a robin recording from Wikimedia Commons…")
+        print("Model check: identifying a robin recording from Wikimedia Commons with the real BirdNET model…")
         mdir = os.path.join(tmp, "model")
         shared = os.path.join(data, "model")
         if E.model_present(data):

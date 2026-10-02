@@ -1,0 +1,89 @@
+name: Release
+
+# Push a tag like v1.0.1 to build and publish a release, or run it by hand.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build, e.g. v1.0.0"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  bundle:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: windows-x64,  os: windows-latest }
+          - { name: linux-x64,    os: ubuntu-22.04 }       # glibc 2.35 build host; wheels are manylinux_2_28 or older
+          - { name: linux-arm64,  os: ubuntu-22.04-arm }   # Raspberry Pi 4/5 (64-bit OS) and other ARM64 Linux
+          - { name: macos-arm64,  os: macos-latest }       # Apple Silicon
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+      - uses: astral-sh/setup-uv@v6
+      - name: Build and self-test the bundle
+        shell: bash
+        run: uv run --no-project --python 3.12 python tools/build_bundle.py --name ${{ matrix.name }} --version "$TAG"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          cat *.sha256 > SHA256SUMS.txt
+          rm *.sha256
+          V="${TAG#v}"
+          cat > notes.md <<NOTES
+          ## Download
+
+          Pick the zip for your computer, unzip it somewhere permanent, then run it. Everything it needs is inside: Python, the libraries and the BirdNET model. No install and no admin rights are needed.
+
+          | Your computer | Download | Then |
+          |---|---|---|
+          | **Windows 10/11** (64-bit) | \`birdsong-$V-windows-x64.zip\` | double-click **run.bat** |
+          | **Linux** PC (64-bit Intel/AMD) | \`birdsong-$V-linux-x64.zip\` | \`./run.sh\` |
+          | **Raspberry Pi 4/5** (64-bit OS) or other ARM64 Linux | \`birdsong-$V-linux-arm64.zip\` | \`./run.sh\` |
+          | **Mac** with Apple Silicon (M1 or later) | \`birdsong-$V-macos-arm64.zip\` | \`./run.sh\` in Terminal |
+
+          The first run asks a few setup questions (location, microphone, admin password, who can see the page), then opens **http://localhost:8080**. Want a look first? Run \`run.bat demo\` or \`./run.sh demo\`.
+
+          - **Windows:** if SmartScreen warns about an unrecognised app, choose **More info → Run anyway**.
+          - **Linux:** if you unzipped with a tool that dropped permissions, use \`sh run.sh\`. A Linux desktop needs PipeWire/PulseAudio (standard) or \`libportaudio2\`.
+          - **Mac:** the first time, macOS asks to allow microphone access for Terminal.
+
+          Each zip was self-tested on its own platform before upload: unit tests plus identifying a real robin recording. Checksums are in \`SHA256SUMS.txt\`. See the [README](https://github.com/${{ github.repository }}#readme) for setup, autostart, reverse proxies and troubleshooting.
+
+          *Bird identification uses the BirdNET model (Cornell Lab of Ornithology & Chemnitz University of Technology), included under CC BY-NC-SA 4.0 for non-commercial use only. See \`data/model/LICENSE-BirdNET.txt\`.*
+          NOTES
+          sed -i 's/^          //' notes.md
+          gh release create "$TAG" --repo "${{ github.repository }}" --title "Birdsong $TAG" --notes-file notes.md \
+            birdsong-*.zip SHA256SUMS.txt

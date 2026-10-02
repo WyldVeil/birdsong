@@ -1,7 +1,8 @@
 #!/bin/sh
 # Birdsong launcher for Linux, macOS and Raspberry Pi.
 #
-# First run: downloads uv (a small Python manager, ~15 MB) into .runtime/,
+# Release zips include a ready-made Python in runtime/ and just use that.
+# From a git checkout, the first run downloads uv (a small Python manager) into .runtime/,
 # which then fetches its own Python 3.12 and the libraries into .runtime/
 # as well. Nothing is installed system-wide; delete the folder to remove it.
 #
@@ -12,6 +13,16 @@ set -e
 cd "$(dirname "$0")"
 HERE="$(pwd)"
 RT="$HERE/.runtime"
+
+# Release downloads ship a ready-made Python in runtime/: use it directly.
+if [ -x "$HERE/runtime/bin/python3" ]; then
+    if [ "$(uname -s)" = "Darwin" ]; then
+        # Files from a downloaded zip carry Apple's quarantine flag, which
+        # makes Gatekeeper refuse to load the bundled Python's libraries.
+        xattr -dr com.apple.quarantine "$HERE" 2>/dev/null || true
+    fi
+    exec "$HERE/runtime/bin/python3" server.py "$@"
+fi
 
 if command -v uv >/dev/null 2>&1 && [ -z "$BIRDSONG_OWN_UV" ]; then
     UV=uv

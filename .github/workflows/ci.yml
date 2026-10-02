@@ -15,7 +15,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Exercise the real launchers: they fetch uv, a private Python and the
       # packages, then run the unit tests and a real BirdNET identification.

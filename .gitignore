@@ -3,6 +3,9 @@ data/
 data-demo/
 # The private Python environment run.sh / run.bat create
 .runtime/
+runtime/
+build/
+dist/
 .venv/
 __pycache__/
 *.pyc

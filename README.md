@@ -42,26 +42,38 @@ double-click; no Python install, no admin rights, no account, no cloud.
 
 ## Quick start
 
-### Windows
+### Easiest: download a release
 
-1. Click the green **Code** button above → **Download ZIP**, and unzip it
-   somewhere permanent (e.g. `Documents\birdsong`). Or `git clone` it.
-2. Double-click **`run.bat`**.
-   *If Windows SmartScreen warns about an unknown script, choose **More info →
-   Run anyway**.*
-3. The first run downloads what it needs (about 300 MB, once) and starts a
-   short setup. Answer the questions, and your browser opens at
-   **http://localhost:8080**.
+Go to **[Releases](https://github.com/WyldVeil/birdsong/releases/latest)** and
+download the zip for your computer. Each one contains everything: its own
+Python, the libraries and the BirdNET model. There's nothing to install and
+nothing more to download.
 
-### Linux, macOS, Raspberry Pi
+| Your computer | Zip | Then |
+|---|---|---|
+| Windows 10/11 (64-bit) | `birdsong-…-windows-x64.zip` | double-click **`run.bat`** |
+| Linux PC (64-bit Intel/AMD) | `birdsong-…-linux-x64.zip` | `./run.sh` |
+| Raspberry Pi 4/5 (64-bit OS), other ARM64 Linux | `birdsong-…-linux-arm64.zip` | `./run.sh` |
+| Mac with Apple Silicon | `birdsong-…-macos-arm64.zip` | `./run.sh` in Terminal |
+
+Unzip it somewhere permanent (e.g. `Documents\birdsong`) and run it. The
+first start asks a few setup questions, then your browser opens at
+**http://localhost:8080**.
+
+*Windows: if SmartScreen warns about an unrecognised app, choose **More info →
+Run anyway**. Mac: allow microphone access for Terminal when asked.*
+
+### From source (git)
 
 ```sh
 git clone https://github.com/WyldVeil/birdsong.git
 cd birdsong
-./run.sh
+./run.sh          # Windows: run.bat
 ```
 
-Same setup questions, then open **http://localhost:8080**.
+The first run downloads [uv](https://github.com/astral-sh/uv), which fetches
+a private Python and the libraries into `.runtime/` (about 300 MB, once).
+BirdNET is downloaded on first start.
 
 ### Just want to look first?
 
@@ -229,8 +241,9 @@ the file by hand (stop Birdsong first):
 
 ## Updating and uninstalling
 
-- **Update:** `git pull`, or download the ZIP again and copy your `data/`
-  folder into it. Your data and settings carry over.
+- **Update:** download the new release zip, unzip it, and copy your old
+  `data/` folder into it (or `git pull` for a git checkout). Your detections,
+  recordings and settings carry over.
 - **Uninstall:** `run.bat autostart remove` (if you installed it), then delete
   the folder. Nothing was installed anywhere else.
 
