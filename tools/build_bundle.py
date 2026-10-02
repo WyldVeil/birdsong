@@ -15,6 +15,7 @@ import argparse
 import hashlib
 import io
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -70,7 +71,9 @@ def build(name: str, version: str, out: str, skip_test: bool):
     # 2. a relocatable Python
     pydir = os.path.join(build_dir, "py")
     run(["uv", "python", "install", PY, "--install-dir", pydir])
-    cands = [d for d in os.listdir(pydir) if d.startswith("cpython-") and not os.path.islink(os.path.join(pydir, d))]
+    # uv also adds a minor-version alias (cpython-3.12-...), a symlink on Unix
+    # but a junction on Windows (islink() is False), so match the full version.
+    cands = [d for d in os.listdir(pydir) if re.match(r"cpython-\d+\.\d+\.\d+", d)]
     if len(cands) != 1:
         sys.exit(f"expected one Python in {pydir}, found {cands}")
     runtime = os.path.join(stage, "runtime")
