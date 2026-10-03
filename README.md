@@ -263,12 +263,17 @@ On **macOS** you'll be asked to allow microphone access the first time.
 ### The microphone
 
 **Recommended: a Clippy EM272 mono microphone** (sold by Micbooster), which is
-what the author's station uses. It's built on the Primo EM272 capsule, which
-has very low self-noise, so it picks up far quieter, more distant birdsong than
-a typical USB mic. It's much better than a phone's built-in mic, which is noisy
-and processed to suit speech. It's a small 3.5 mm mic that plugs into a
-computer's pink microphone jack (which supplies the "plug-in power" it needs) or
-a USB sound card's mic input. Get the *mono* version: BirdNET listens in mono.
+what the author's station uses. Here's why:
+
+- **Very quiet.** Its Primo EM272 capsule has a self-noise of just **14 dBA**,
+  quieter than many microphones costing several times as much. It picks up far
+  fainter, more distant birdsong than a typical USB mic, and much more than a
+  phone's built-in mic, which is noisy and processed to suit speech.
+- **Mono is all you need.** BirdNET analyses a single channel of sound, so a
+  stereo mic would just be mixed down. Get the *mono* version.
+
+It's a small 3.5 mm mic that plugs into a computer's pink microphone jack (which
+supplies the "plug-in power" it needs) or a USB sound card's mic input.
 
 Any microphone works, though. A cheap USB mic will catch nearby birds.
 
