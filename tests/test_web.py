@@ -245,6 +245,38 @@ class Periods(Server):
         self.assertEqual(L["hearing"][0]["common"], "European Robin")
 
 
+class Filters(Server):
+    def test_held_and_rejected_detections_are_admin_only(self):
+        now = time.time() - 60
+        ok = self.add("Erithacus rubecula", now, verified="ok")
+        multi = self.add("Erithacus rubecula", now + 1, verified="multi", hits=3)
+        pend = self.add("Turdus merula", now + 2, verified="pending")
+        bad = self.add("Turdus merula", now + 3, verified="failed", verify_score=0.04)
+        sniff = self.add("Turdus merula", now + 4, verified="human")
+        old = self.add("Turdus merula", now + 5)                  # from before the filters existed
+        self.assertEqual({d["id"] for d in self.json("api/log")["items"]}, {ok, multi, old})
+        self.assertEqual({d["id"] for d in self.json("api/log", admin=True)["items"]}, {ok, multi, old, pend})
+        review = {d["id"]: d["verified"] for d in self.json("api/admin/review", admin=True)["items"]}
+        self.assertEqual((review[bad], review[sniff]), ("failed", "human"))
+        self.assertEqual(self.json("api/admin/status", admin=True)["unverified"], 2)
+        status, _h, body = self.req(f"/api/admin/det/{sniff}", "POST", {"action": "confirm"}, {"X-Birds": "1"}, admin=True)
+        self.assertEqual(json.loads(body)["det"]["verified"], "ok")
+        self.assertIn(sniff, {d["id"] for d in self.json("api/log")["items"]})
+
+    def test_upgrade_adds_columns(self):
+        import sqlite3
+        path = os.path.join(self.tmp, "old.db")
+        con = sqlite3.connect(path)
+        con.execute("CREATE TABLE detections (id INTEGER PRIMARY KEY, sci TEXT, start REAL, end REAL, day TEXT, "
+                    "hour INTEGER, conf REAL, hits INTEGER, tier INTEGER, review TEXT, hidden INTEGER, saved INTEGER, "
+                    "speech INTEGER, open INTEGER, clip TEXT, clip_bytes INTEGER, spectro TEXT)")
+        con.commit()
+        con.close()
+        E.connect(path).close()
+        cols = {r[1] for r in sqlite3.connect(path).execute("PRAGMA table_info(detections)")}
+        self.assertTrue({"verified", "verify_score"} <= cols)
+
+
 class SecretPath(Server):
     base_path = "/k3j9x2q8/hidden/"
 

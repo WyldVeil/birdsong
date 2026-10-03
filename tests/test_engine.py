@@ -94,10 +94,13 @@ class Events(unittest.TestCase):
         e.cfg = dict(C.DEFAULTS)
         e.db = E.connect(os.path.join(self.tmp, "birds.db"))
         e.net = mock.Mock(sci=["Erithacus rubecula", "Turdus migratorius"], common=["European Robin", "American Robin"])
+        e.net.predict = lambda x, sens=1.0: np.zeros(2, dtype=np.float32)     # re-check finds nothing
+        e.sci_index = {"Erithacus rubecula": 0, "Turdus migratorius": 1}
+        e.hnv_idx = 1                                                        # stub "Human non-vocal" slot
         e.tiers = np.array([1, 3], dtype=np.int8)
         e.events = {}
-        e.ring = E.Ring(10)
-        e.ring.push(np.zeros(E.SR * 5, dtype=np.int16), time.time())
+        e.ring = E.Ring(40)
+        e.ring.push(np.zeros(E.SR * 30, dtype=np.int16), time.time())
         e.clip_q = mock.Mock()
         self.e = e
 
@@ -123,6 +126,53 @@ class Events(unittest.TestCase):
         for k in range(30):
             e._hit(0, 0.8, t + k * 1.5, t + k * 1.5 + 3, 0)
         self.assertEqual(self.count(), 2)
+
+    def verdict(self, det_id):
+        return self.e.db.execute("SELECT verified FROM detections WHERE id=?", (det_id,)).fetchone()[0]
+
+    def test_recheck_real_call_vs_noise(self):
+        e, SR = self.e, E.SR
+        audio = np.zeros(7 * SR, dtype=np.int16)
+        audio[int(3.5 * SR)] = 30000                              # a short call mid-window
+        e.net.predict = lambda x, sens=1.0: np.array([0.9 if np.abs(x).max() > 0.5 else 0.0, 0], dtype=np.float32)
+        self.assertEqual(e._verify("Erithacus rubecula", audio, 2 * SR)[0], "ok")
+        # A "hit" that only exists for the exact original framing (noise artefact):
+        e.net.predict = lambda x, sens=1.0: np.array([0.9 if abs(x[0]) > 0.5 else 0.0, 0], dtype=np.float32)
+        audio2 = np.zeros(7 * SR, dtype=np.int16)
+        audio2[2 * SR] = 30000
+        self.assertEqual(e._verify("Erithacus rubecula", audio2, 2 * SR), ("failed", 0.0))
+
+    def test_single_window_pending_then_checked(self):
+        e = self.e
+        t = e.ring.time_of(e.ring.total) - 6
+        e._hit(0, 0.9, t - 3, t, 0)
+        self.assertEqual(self.verdict(1), "pending")
+        e._close(e.events["Erithacus rubecula"])                  # stub re-check finds nothing
+        self.assertEqual(self.verdict(1), "failed")
+        e._hit(0, 0.9, t + 100, t + 103, 0)
+        e._hit(0, 0.9, t + 101.5, t + 104.5, 0)
+        self.assertEqual(self.verdict(2), "multi")                # heard twice: public at once
+
+    def test_human_noise_guard(self):
+        e = self.e
+        e.cfg["human_guard_species"] = ["Erithacus rubecula"]      # pretend robins are owl-like
+        t = e.ring.time_of(e.ring.total) - 6
+        human = {"v": 0.6}
+        e.net.predict = lambda x, sens=1.0: np.array([0.9, human["v"]], dtype=np.float32)
+        e._hit(0, 0.9, t - 4.5, t - 1.5, 0)
+        e._hit(0, 0.9, t - 3, t, 0)
+        self.assertEqual(self.verdict(1), "pending")              # guarded: held even when heard twice
+        e._close(e.events["Erithacus rubecula"])
+        self.assertEqual(self.verdict(1), "human")
+        human["v"] = 0.05
+        e._hit(0, 0.9, t - 3, t, 0)
+        e._close(e.events["Erithacus rubecula"])
+        self.assertEqual(self.verdict(2), "ok")                   # no human noise, and it re-checks fine
+        e.cfg["human_guard_species"] = []                         # unguarded: never held for human noise
+        human["v"] = 0.9
+        e._hit(0, 0.9, t - 4.5, t - 1.5, 0)
+        e._hit(0, 0.9, t - 3, t, 0)
+        self.assertEqual(self.verdict(3), "multi")
 
     def test_vagrant_rules(self):
         e, t = self.e, time.time() - 100

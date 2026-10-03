@@ -55,6 +55,18 @@ DEFAULTS = {
     "clip_pad_s": 2.0,
     "speech_threshold": 0.15,
 
+    # --- extra false-detection filters on top of BirdNET (see README)
+    # Re-check: a detection heard in only one 3 s window is re-scored with the
+    # window shifted +/-0.25..1.0 s; it needs >= verify_min_score in
+    # >= verify_min_windows of those, or it stays off the public page.
+    "verify_single": True, "verify_min_score": 0.5, "verify_min_windows": 2,
+    # Human-noise guard: species a person's sounds near the mic can imitate
+    # (a sniff -> "Barn Owl"). Held back if BirdNET hears "Human non-vocal"
+    # at >= human_guard_threshold anywhere in the clip.
+    "human_guard_species": ["Tyto alba", "Strix aluco", "Athene noctua", "Asio otus",
+                            "Asio flammeus", "Melanitta nigra"],
+    "human_guard_threshold": 0.25,
+
     # --- storage
     "clip_days": 30,
     "spectro_days": 365,

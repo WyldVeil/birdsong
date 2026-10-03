@@ -26,7 +26,11 @@ from urllib.parse import parse_qs
 from . import config as C
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
-PUBLIC_SQL = "d.hidden=0 AND (d.tier<3 OR d.review='confirmed')"
+# Never public: hidden, unconfirmed rarities, and detections the extra filters
+# are holding ("pending" until checked) or rejected ("failed" re-check,
+# "human" noise guard). The admin sees those in the review list.
+PUBLIC_SQL = ("d.hidden=0 AND (d.tier<3 OR d.review='confirmed') "
+              "AND d.verified NOT IN ('pending','failed','human')")
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 COOKIE = "birdsong_admin"
@@ -113,12 +117,13 @@ def _det(r, admin):
          "spec": bool(r["spectro"]) and (admin or not r["speech"])}
     if admin:
         d.update(clip=bool(r["clip"]), saved=bool(r["saved"]), hidden=bool(r["hidden"]),
-                 review=r["review"], speech=bool(r["speech"]), bytes=r["clip_bytes"])
+                 review=r["review"], speech=bool(r["speech"]), bytes=r["clip_bytes"],
+                 verified=r["verified"], verify_score=r["verify_score"])
     return d
 
 
 def _vis(admin):
-    return "d.hidden=0" if admin else PUBLIC_SQL
+    return "d.hidden=0 AND d.verified NOT IN ('failed','human')" if admin else PUBLIC_SQL
 
 
 def _ts(d: date) -> float:
@@ -395,6 +400,8 @@ def api_admin_status(app: App) -> dict:
                             "COALESCE(SUM(CASE WHEN tier=3 AND review='pending' AND hidden=0 THEN 1 ELSE 0 END),0), "
                             "COALESCE(SUM(hidden),0) FROM detections").fetchone()
             out.update(clips=r[0], clip_bytes=r[1], saved=r[2], pending=r[3], hidden=r[4])
+            out["unverified"] = con.execute("SELECT COUNT(*) FROM detections WHERE verified IN ('failed','human') "
+                                            "AND hidden=0").fetchone()[0]
             bw = dict(con.execute("SELECT status, COUNT(*) FROM birdweather GROUP BY status").fetchall())
             out["birdweather"] = {"enabled": bool(cfg.get("birdweather_token")), "audio": bool(cfg.get("birdweather_audio")),
                                   "sent": bw.get("sent", 0), "queued": bw.get("retry", 0), "failed": bw.get("failed", 0)}
@@ -410,7 +417,7 @@ def api_admin_review(app: App) -> dict:
     try:
         sp = app.species(con)
         rows = con.execute("SELECT * FROM detections d WHERE (d.tier=3 AND d.review='pending') OR d.hidden=1 "
-                           "OR d.saved=1 ORDER BY d.start DESC LIMIT 300").fetchall()
+                           "OR d.saved=1 OR d.verified IN ('failed','human') ORDER BY d.start DESC LIMIT 300").fetchall()
         return {"items": [dict(_det(r, True), **_brief(sp, r["sci"])) for r in rows]}
     finally:
         con.close()
@@ -432,7 +439,8 @@ def admin_action(app: App, det_id: int, action: str):
         if r is None:
             return None
         sql = {"save": "saved=1", "unsave": "saved=0", "hide": "hidden=1", "unhide": "hidden=0",
-               "confirm": "review='confirmed', hidden=0"}.get(action)
+               "confirm": "review=CASE WHEN tier=3 THEN 'confirmed' ELSE review END, verified=CASE WHEN "
+                          "verified IN ('failed','pending','human') THEN 'ok' ELSE verified END, hidden=0"}.get(action)
         if sql:
             con.execute(f"UPDATE detections SET {sql} WHERE id=?", (det_id,))
         elif action == "delete_clip":
@@ -627,7 +635,8 @@ class Handler(BaseHTTPRequestHandler):
             admin = self.is_admin()
             if r is None or not r["spectro"]:
                 return False
-            if not admin and (r["speech"] or r["hidden"] or (r["tier"] == 3 and r["review"] != "confirmed")):
+            if not admin and (r["speech"] or r["hidden"] or (r["tier"] == 3 and r["review"] != "confirmed")
+                              or r["verified"] in ("pending", "failed", "human")):
                 return False
             try:
                 return self.send_file(safe_path(app, r["spectro"]), "image/png", "private, max-age=86400")

@@ -983,6 +983,9 @@ function logRow(d, opts = {}) {
     if (d.speech) flags.push('<span class="flag" title="Speech detected in this clip">speech</span>');
     if (d.review === "pending") flags.push('<span class="flag" style="color:var(--bad)">needs review</span>');
     if (d.hidden) flags.push('<span class="flag">hidden</span>');
+    if (d.verified === "failed") flags.push(`<span class="flag" style="color:var(--bad)" title="Heard in one window only, and BirdNET didn't find it again when the window was shifted (best ${pct(d.verify_score)}). Not shown publicly or sent to BirdWeather. Listen, and approve with ✓ if it's real.">unverified</span>`);
+    if (d.verified === "human") flags.push(`<span class="flag" style="color:var(--bad)" title="BirdNET heard human noise (sniffs, breathing, coughs) in this clip, and this species is one such noises can imitate. Not shown publicly or sent to BirdWeather. Listen, and approve with ✓ if it's real.">human noise nearby</span>`);
+    if (d.verified === "pending") flags.push('<span class="flag" title="Being checked; decided when the bird stops calling">checking…</span>');
   }
   return `<div class="row${d.hidden ? " hidden-det" : ""}" data-id="${d.id}" data-slug="${esc(d.slug || "")}">
     <div class="tm num">${tTime(d.start, true)}${showDate ? `<small>${tDate(d.start, { day: "numeric", month: "short" })}</small>` : `<small>${d.end - d.start > 3.5 ? Math.round(d.end - d.start) + "s" : "3s"}</small>`}</div>
@@ -998,7 +1001,7 @@ function logRow(d, opts = {}) {
 function adminBtns(d) {
   return `<button class="ib" data-a="play" title="Play clip" ${d.clip ? "" : "disabled"}>${ICON.play}</button>
     <button class="ib${d.saved ? " on" : ""}" data-a="${d.saved ? "unsave" : "save"}" title="${d.saved ? "Saved (won't auto-delete). Click to unsave" : "Save clip (keep forever)"}" ${d.clip || d.saved ? "" : "disabled"}>${ICON.star}</button>
-    ${d.review === "pending" ? `<button class="ib" data-a="confirm" title="Confirm this rarity">${ICON.check}</button>` : ""}
+    ${d.review === "pending" || d.verified === "failed" || d.verified === "human" ? `<button class="ib" data-a="confirm" title="${d.verified === "failed" || d.verified === "human" ? "It's real: approve (shows publicly and goes to BirdWeather)" : "Confirm this rarity"}">${ICON.check}</button>` : ""}
     <button class="ib${d.hidden ? " on" : ""}" data-a="${d.hidden ? "unhide" : "hide"}" title="${d.hidden ? "Unhide" : "Hide (false positive)"}">${ICON.hide}</button>`;
 }
 
@@ -1075,6 +1078,7 @@ async function openAdmin() {
       <div><b>${bytes(st.photos_bytes)}</b><span>bird photos</span></div>
       <div><b class="${e.mic_error ? "down" : clipped ? "down" : "up"}">${e.mic_error ? "Error" : clipped ? "Clipping" : "OK"}</b><span>microphone${e.level_db != null ? " · " + Math.round(e.level_db) + " dB" : ""}</span></div>
       <div><b>${fmtN(st.pending)}</b><span>rarities to review</span></div>
+      <div><b>${fmtN(st.unverified || 0)}</b><span>held back by the extra filters</span></div>
       <div><b class="${st.birdweather && st.birdweather.failed ? "down" : ""}">${st.birdweather && st.birdweather.enabled ? fmtN(st.birdweather.sent || 0) : "Off"}</b><span>sent to BirdWeather${st.birdweather && st.birdweather.enabled ? ` (${st.birdweather.audio ? "with" : "no"} audio)${st.birdweather.queued ? ` · ${fmtN(st.birdweather.queued)} queued` : ""}${st.birdweather.failed ? ` · ${fmtN(st.birdweather.failed)} failed` : ""}` : ""}</span></div>
     </div>
     <p class="note">Clips are kept ${cfg.clip_days} days, capped at ${fmtN(cfg.max_clip_mb)} MB (oldest go first), and nothing new is recorded if the drive drops below ${cfg.min_free_gb} GB free. Starred clips are never deleted. Thresholds: ${pct(cfg.min_conf)} expected species, ${pct(cfg.unusual_conf)} unusual, ${pct(cfg.vagrant_conf)} rarities (which stay hidden from the public until you confirm them).${e.mic_error ? `<br><b class="down">Mic: ${esc(e.mic_error)}</b>` : ""}${clipped ? `<br><b class="down">The mic clipped in the last hour. Lower the Rear Microphone level a little.</b>` : ""}</p>

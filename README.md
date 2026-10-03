@@ -39,6 +39,9 @@ double-click; no Python install, no admin rights, no account, no cloud.
 - **Recordings for you only.** The admin can play, download, star (keep forever)
   or delete each clip. Visitors can't hear anything, because a microphone in a
   house picks up more than birds.
+- **Extra false-detection filters on top of BirdNET.** A shifted re-check
+  catches hits on background noise, and a human-noise guard stops sniffs
+  becoming "owls" (see below).
 - **Looks after itself.** Clips are deleted after 30 days unless starred, total
   clip space is capped, and recording pauses if the disk gets low.
 - **Optional BirdWeather sharing.** Your detections can appear on
@@ -122,6 +125,77 @@ speech is heard during a bird's clip, its spectrogram is hidden from visitors.
 
 Identification is automatic and can be wrong. Admins can hide false positives
 with one click.
+
+## Fewer false detections: what Birdsong adds on top of BirdNET
+
+BirdNET is very good, but anyone who runs it 24/7 sees phantom birds: a
+"Whimbrel" from the hiss of an empty room, a "Barn Owl" that is really someone
+sniffing next to the microphone. Birdsong layers its own checks on top of
+BirdNET so these don't reach the public page or BirdWeather. Nothing is ever
+thrown away. Anything held back waits in the admin **review list**, where one
+click (✓) approves it if you listen and it's real.
+
+| Layer | What it catches | How it works |
+|---|---|---|
+| **1. Location tiers** | Birds that don't live anywhere near you | BirdNET's own location model, used to require more confidence from less likely species (see the table above). |
+| **2. Rarity review** | One-off exotic matches | Species from outside your region need 95% *and* two windows, then your confirmation. |
+| **3. Shifted re-check** | Hits on background noise | See below. |
+| **4. Human-noise guard** | Sniffs, breathing and coughs mistaken for owls | See below. |
+
+### 3. Shifted re-check (for detections heard in one window)
+
+**The problem.** A single 3-second window sometimes scores 70–90% for a bird
+that isn't there. BirdNET has latched onto a chance pattern in the background
+noise.
+
+**The idea.** A real call is *in the audio*. Shift the 3-second window a
+fraction of a second either way and the call is still inside it, so BirdNET
+recognises it again. A noise artefact only exists for one exact framing of the
+background, and it vanishes when the window moves.
+
+**How it's implemented.** While a bird is heard in only one window, its
+detection is marked *checking* and stays private. When the event ends, the
+engine takes the **original uncompressed audio** from its in-memory buffer and
+re-runs BirdNET with the window shifted by ±0.25, ±0.5, ±0.75 and ±1 second.
+The detection is **verified** if the species still scores at least 0.5 in at
+least 2 of those 8 shifted windows. Otherwise it's marked **unverified** and
+goes to the review list. Detections heard in two or more windows already count
+as confirmed.
+
+**Evidence from a real station.** Re-scoring the saved clips of confident Robin
+and Jackdaw detections reproduced 0.94–0.98. A "Spotted Crake" logged at 0.88
+and three "Whimbrels" at about 0.72 collapsed to 0.00–0.08 when the window
+moved. Their recordings contained no calls at all.
+
+### 4. Human-noise guard (for species people can imitate by accident)
+
+**The problem.** A sniff, breath or cough right next to a sensitive microphone
+can sound like a **Barn Owl's** hissing screech to BirdNET. The shifted re-check
+can't catch this, because a sniff is a real sound and is still there when the
+window moves.
+
+**The idea.** BirdNET also recognises human sounds, through its "Human
+non-vocal" class. If a person is making noise in the same clip as an owl-like
+detection, the detection can't be trusted.
+
+**How it's implemented.** For a short list of noise-prone species, every
+detection is held until the bird stops calling, even if it was heard several
+times. The engine then scores "Human non-vocal" across the whole clip (3-second
+windows every 0.5 s). At 0.25 or above, the detection is marked **human noise
+nearby** and goes to the review list. Common garden birds are never on the
+list, so they're never held back just because someone is nearby.
+
+**How the list was chosen.** On a real station, human noise turned up in the
+clips of **48% of Barn Owl** and **25% of Tawny Owl** detections, against
+**0–1%** for every other species, including hundreds of Robins and Jackdaws.
+In recorded test sniffs, BirdNET's top bird guesses were Barn Owl, then Common
+Scoter. Running BirdNET over the 1,840 non-bird recordings of the
+[ESC-50](https://github.com/karoldvl/ESC-50) everyday-sound dataset (breathing,
+snoring, coughing, typing, doors, dripping water…) produced almost no bird
+detections. So the problem is close-range sounds at your own microphone, not
+household noise in general. The default list is the five UK owls (Barn, Tawny,
+Little, Long-eared, Short-eared) plus Common Scoter, and you can change it with
+`human_guard_species`.
 
 ## Using it
 
@@ -285,6 +359,10 @@ the file by hand (stop Birdsong first):
 | `behind_proxy` | false | Trust `X-Forwarded-*` headers from your reverse proxy |
 | `audio_backend` / `device` | auto / default | Microphone (see `devices`) |
 | `fetch_photos` | true | Download photos and descriptions from Wikipedia |
+| `verify_single` | true | Shifted re-check for detections heard in one window |
+| `verify_min_score` / `verify_min_windows` | 0.5 / 2 | What the re-check needs to call a detection verified |
+| `human_guard_species` | five owls + Common Scoter | Species held back when human noise is in the clip |
+| `human_guard_threshold` | 0.25 | BirdNET "Human non-vocal" score that counts as human noise |
 | `birdweather_token` | *(empty = off)* | BirdWeather station token (set with `birdweather`) |
 | `birdweather_audio` | false | Also send a FLAC clip with each detection (never clips with speech) |
 | `microphone` | *(empty)* | Microphone name shown at the bottom of the page |

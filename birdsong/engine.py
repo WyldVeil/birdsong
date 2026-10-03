@@ -109,7 +109,9 @@ CREATE TABLE IF NOT EXISTS detections (
     hits INTEGER NOT NULL DEFAULT 1, tier INTEGER NOT NULL,
     review TEXT NOT NULL DEFAULT '', hidden INTEGER NOT NULL DEFAULT 0,
     saved INTEGER NOT NULL DEFAULT 0, speech INTEGER NOT NULL DEFAULT 0,
-    open INTEGER NOT NULL DEFAULT 1, clip TEXT, clip_bytes INTEGER NOT NULL DEFAULT 0, spectro TEXT
+    open INTEGER NOT NULL DEFAULT 1, clip TEXT, clip_bytes INTEGER NOT NULL DEFAULT 0, spectro TEXT,
+    verified TEXT NOT NULL DEFAULT '',   -- pending | multi | ok | failed | human | '' (older rows)
+    verify_score REAL
 );
 CREATE INDEX IF NOT EXISTS det_start ON detections(start);
 CREATE INDEX IF NOT EXISTS det_day ON detections(day);
@@ -132,7 +134,17 @@ def connect(db_file: str) -> sqlite3.Connection:
     con.execute("PRAGMA synchronous=NORMAL")
     con.execute("PRAGMA busy_timeout=15000")
     con.executescript(SCHEMA)
+    migrate(con)
     return con
+
+
+def migrate(con: sqlite3.Connection) -> None:
+    """Add columns introduced after a database was created (upgrades)."""
+    have = {r[1] for r in con.execute("PRAGMA table_info(detections)")}
+    for col, decl in (("verified", "TEXT NOT NULL DEFAULT ''"), ("verify_score", "REAL")):
+        if col not in have:
+            con.execute(f"ALTER TABLE detections ADD COLUMN {col} {decl}")
+    con.commit()
 
 
 def slugify(sci: str) -> str:
@@ -366,6 +378,8 @@ class Engine:
                       np.where(self.tiers == 2, cfg["unusual_conf"],
                       np.where(self.tiers == 3, cfg["vagrant_conf"], 9.0))).astype(np.float32)
         self.human_idx = self.net.common.index("Human vocal")
+        self.hnv_idx = self.net.common.index("Human non-vocal")
+        self.sci_index = {s: i for i, s in enumerate(self.net.sci)}
         self.events = {}
         self.live = LiveSpectrum()
         self.status = {"started": time.time(), "level_db": None, "peak": 0.0}
@@ -462,18 +476,24 @@ class Engine:
     def _upsert(self, ev: Event, i: int):
         if ev.tier == 3 and ev.hits < 2:
             return
+        # "pending" = not public yet: heard in one window so far (re-checked when
+        # it closes), or a human-noise-guarded species (checked when it closes).
+        guarded = self._guarded(ev.sci)
+        held = (ev.hits < 2 and self.cfg.get("verify_single", True)) or guarded
         if not ev.inserted:
             self.db.execute("INSERT OR IGNORE INTO species(sci, common, tier, slug) VALUES (?,?,?,?)",
                             (ev.sci, self.net.common[i], ev.tier, slugify(ev.sci)))
             lt = time.localtime(ev.start)
             cur = self.db.execute(
-                "INSERT INTO detections(sci, start, end, day, hour, conf, hits, tier, review) VALUES (?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO detections(sci, start, end, day, hour, conf, hits, tier, review, verified) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (ev.sci, ev.start, ev.end, time.strftime("%Y-%m-%d", lt), lt.tm_hour, round(ev.conf, 4),
-                 ev.hits, ev.tier, "pending" if ev.tier == 3 else ""))
+                 ev.hits, ev.tier, "pending" if ev.tier == 3 else "", "pending" if held else "multi"))
             ev.id, ev.inserted = cur.lastrowid, True
         else:
-            self.db.execute("UPDATE detections SET end=?, conf=?, hits=? WHERE id=?",
-                            (ev.end, round(ev.conf, 4), ev.hits, ev.id))
+            self.db.execute("UPDATE detections SET end=?, conf=?, hits=?, verified=CASE WHEN ?>=2 AND "
+                            "verified='pending' AND ?=0 THEN 'multi' ELSE verified END WHERE id=?",
+                            (ev.end, round(ev.conf, 4), ev.hits, ev.hits, int(guarded), ev.id))
         self.db.commit()
 
     def _close_stale(self, now: float):
@@ -487,11 +507,52 @@ class Engine:
             return
         speech = ev.human >= float(self.cfg["speech_threshold"])
         pad = float(self.cfg["clip_pad_s"])
-        audio = self.ring.get(self.ring.index_of(ev.start - pad), self.ring.index_of(ev.end + pad))
-        self.db.execute("UPDATE detections SET open=0, speech=? WHERE id=?", (int(speech), ev.id))
+        a = self.ring.index_of(ev.start - pad)
+        a_eff = max(a, self.ring.total - len(self.ring.buf), 0)       # get() clamps to what's left
+        audio = self.ring.get(a, self.ring.index_of(ev.end + pad))
+        verified, vscore = None, None
+        hnv = self._human_noise(audio) if self._guarded(ev.sci) else None
+        if hnv is not None and hnv >= float(self.cfg.get("human_guard_threshold", 0.25)):
+            verified = "human"
+            log.info(f"human-noise guard held back {self.net.common[self.sci_index[ev.sci]]} "
+                     f"(human non-vocal {hnv:.2f})")
+        elif hnv is not None and ev.hits >= 2:
+            verified = "multi"
+        elif ev.hits < 2 and self.cfg.get("verify_single", True):
+            verified, vscore = self._verify(ev.sci, audio, self.ring.index_of(ev.start) - a_eff)
+            log.info(f"re-check {self.net.common[self.sci_index[ev.sci]]} {ev.conf:.0%}: {verified} "
+                     f"(best shifted score {vscore:.2f})")
+        self.db.execute("UPDATE detections SET open=0, speech=?, verified=COALESCE(?, verified), "
+                        "verify_score=COALESCE(?, verify_score) WHERE id=?",
+                        (int(speech), verified, None if vscore is None else round(vscore, 3), ev.id))
         self.db.commit()
         if len(audio) >= SR:
             self.clip_q.put((ev.id, ev.start, audio))
+
+    def _guarded(self, sci: str) -> bool:
+        return sci in set(self.cfg.get("human_guard_species") or ())
+
+    def _verify(self, sci: str, audio: np.ndarray, orig: int):
+        """Re-score `sci` with the 3 s window shifted +/-0.25..1.0 s from `orig`
+        (the detecting window's start, in samples). A real call is still there
+        when the window moves; a hit on background noise vanishes."""
+        i = self.sci_index.get(sci)
+        x = audio.astype(np.float32) / 32768.0
+        sens = float(self.cfg["sensitivity"])
+        scores = [float(self.net.predict(x[s:s + WIN], sens)[i])
+                  for s in (orig + k * SR // 4 for k in (-4, -3, -2, -1, 1, 2, 3, 4))
+                  if i is not None and 0 <= s and s + WIN <= len(x)]
+        good = sum(v >= float(self.cfg.get("verify_min_score", 0.5)) for v in scores)
+        return ("ok" if good >= int(self.cfg.get("verify_min_windows", 2)) else "failed"), max(scores, default=0.0)
+
+    def _human_noise(self, audio: np.ndarray) -> float:
+        """Max BirdNET "Human non-vocal" score over the clip (3 s windows every 0.5 s)."""
+        x = audio.astype(np.float32) / 32768.0
+        if len(x) < WIN:
+            x = np.pad(x, (0, WIN - len(x)))
+        sens = float(self.cfg["sensitivity"])
+        return max(float(self.net.predict(x[s:s + WIN], sens)[self.hnv_idx])
+                   for s in range(0, len(x) - WIN + 1, SR // 2))
 
     def close_all(self):
         for ev in list(self.events.values()):
@@ -534,7 +595,8 @@ class Engine:
             "peak": st.get("peak"), "clipped_at": st.get("clipped_at"), "mic_error": st.get("mic_error"),
             "low_disk": self.low_disk, "seq": seq, "bands": LiveSpectrum.BANDS, "col_rate": 20, "cols": cols,
             "hearing": [{"sci": e.sci, "conf": round(e.conf, 3), "since": e.start}
-                        for e in list(self.events.values()) if e.inserted and e.tier < 3],
+                        for e in list(self.events.values())
+                        if e.inserted and e.tier < 3 and e.hits >= 2 and not self._guarded(e.sci)],
         }
 
 
@@ -792,6 +854,7 @@ def birdweather_pass(data: str, db, cfg: dict, names: dict, now: float = None, r
     due = db.execute(
         "SELECT d.*, b.tries FROM detections d LEFT JOIN birdweather b ON b.det_id=d.id "
         "WHERE d.open=0 AND d.start>=? AND d.hidden=0 AND (d.tier<3 OR d.review='confirmed') "
+        "AND d.verified NOT IN ('pending','failed','human') "
         "AND (b.det_id IS NULL OR (b.status='retry' AND b.next_try<=?)) ORDER BY d.start LIMIT ?",
         (since, now, limit)).fetchall()
     pad = float(cfg.get("clip_pad_s", 2.0))
