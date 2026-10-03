@@ -49,7 +49,7 @@ DEFAULTS = {
     "unusual_threshold": 0.005,
     "unusual_radius_deg": 1.5,
     "sensitivity": 1.0,
-    "step_s": 1.5,
+    "step_s": 1.0,                # analyse every 1 s: 3 s windows overlap by 2 s
     "merge_gap_s": 6.0,
     "max_event_s": 30.0,
     "clip_pad_s": 2.0,
@@ -66,6 +66,7 @@ DEFAULTS = {
     "human_guard_species": ["Tyto alba", "Strix aluco", "Athene noctua", "Asio otus",
                             "Asio flammeus", "Melanitta nigra"],
     "human_guard_threshold": 0.25,
+    "human_guard_top_class": True,  # ...or if a Human class is BirdNET's top guess in any window
 
     # --- storage
     "clip_days": 30,

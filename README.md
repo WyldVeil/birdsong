@@ -141,6 +141,7 @@ click (✓) approves it if you listen and it's real.
 | **2. Rarity review** | One-off exotic matches | Species from outside your region need 95% *and* two windows, then your confirmation. |
 | **3. Shifted re-check** | Hits on background noise | See below. |
 | **4. Human-noise guard** | Sniffs, breathing and coughs mistaken for owls | See below. |
+| **5. Overlapping windows** | Real calls cut in half by a window edge | See below. |
 
 ### 3. Shifted re-check (for detections heard in one window)
 
@@ -180,9 +181,18 @@ detection, the detection can't be trusted.
 
 **How it's implemented.** For a short list of noise-prone species, every
 detection is held until the bird stops calling, even if it was heard several
-times. The engine then scores "Human non-vocal" across the whole clip (3-second
-windows every 0.5 s). At 0.25 or above, the detection is marked **human noise
-nearby** and goes to the review list. Common garden birds are never on the
+times. The engine then checks the whole clip (3-second windows every 0.5 s).
+The detection is marked **human noise nearby** and goes to the review list if
+either:
+
+- the "Human non-vocal" score reaches 0.25 anywhere, **or**
+- a Human class is BirdNET's **single top guess** in any window. This catches
+  quieter sniffs that never reach 0.25.
+
+A looser "human anywhere in BirdNET's top few guesses" rule (the idea behind
+BirdNET-Pi's privacy filter) was tested and rejected. An owl's hiss genuinely
+sounds part-human to BirdNET, so the human classes ranked 2nd to 5th even for
+quiet night-time owls, and the rule would have held back those too. Common garden birds are never on the
 list, so they're never held back just because someone is nearby.
 
 **How the list was chosen.** On a real station, human noise turned up in the
@@ -196,6 +206,19 @@ detections. So the problem is close-range sounds at your own microphone, not
 household noise in general. The default list is the five UK owls (Barn, Tawny,
 Little, Long-eared, Short-eared) plus Common Scoter, and you can change it with
 `human_guard_species`.
+
+### 5. Overlapping windows
+
+BirdNET hears in 3-second windows. Birdsong starts a new window **every
+second**, so consecutive windows overlap by 2 seconds and every call is heard
+whole in at least one of them. It also means real birds are usually heard in
+two or more windows, which counts as confirmed without needing layer 3. A
+global study of BirdNET settings ([Pérez-Granados et al. 2025,
+*Ibis*](https://bou.org.uk/blog-perez-granados-optimizing-birdnet-lessons-from-a-global-initiative/))
+found that raising overlap from the default 0 to about 2 seconds improved
+performance, both for detecting calls and for describing which birds are
+present. The cost is about one BirdNET run per second: a few percent of one
+CPU core on a desktop.
 
 ## Using it
 
@@ -363,6 +386,8 @@ the file by hand (stop Birdsong first):
 | `verify_min_score` / `verify_min_windows` | 0.5 / 2 | What the re-check needs to call a detection verified |
 | `human_guard_species` | five owls + Common Scoter | Species held back when human noise is in the clip |
 | `human_guard_threshold` | 0.25 | BirdNET "Human non-vocal" score that counts as human noise |
+| `human_guard_top_class` | true | Also count it as human noise when a Human class is BirdNET's top guess |
+| `step_s` | 1.0 | Seconds between analysis windows (1.0 = 2 s overlap) |
 | `birdweather_token` | *(empty = off)* | BirdWeather station token (set with `birdweather`) |
 | `birdweather_audio` | false | Also send a FLAC clip with each detection (never clips with speech) |
 | `microphone` | *(empty)* | Microphone name shown at the bottom of the page |

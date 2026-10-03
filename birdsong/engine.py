@@ -379,6 +379,7 @@ class Engine:
                       np.where(self.tiers == 3, cfg["vagrant_conf"], 9.0))).astype(np.float32)
         self.human_idx = self.net.common.index("Human vocal")
         self.hnv_idx = self.net.common.index("Human non-vocal")
+        self.human_idxs = {self.net.common.index(n) for n in ("Human non-vocal", "Human vocal", "Human whistle")}
         self.sci_index = {s: i for i, s in enumerate(self.net.sci)}
         self.events = {}
         self.live = LiveSpectrum()
@@ -511,11 +512,12 @@ class Engine:
         a_eff = max(a, self.ring.total - len(self.ring.buf), 0)       # get() clamps to what's left
         audio = self.ring.get(a, self.ring.index_of(ev.end + pad))
         verified, vscore = None, None
-        hnv = self._human_noise(audio) if self._guarded(ev.sci) else None
-        if hnv is not None and hnv >= float(self.cfg.get("human_guard_threshold", 0.25)):
+        hnv, human_top = self._human_noise(audio) if self._guarded(ev.sci) else (None, False)
+        if hnv is not None and (hnv >= float(self.cfg.get("human_guard_threshold", 0.25))
+                                or (human_top and self.cfg.get("human_guard_top_class", True))):
             verified = "human"
             log.info(f"human-noise guard held back {self.net.common[self.sci_index[ev.sci]]} "
-                     f"(human non-vocal {hnv:.2f})")
+                     f"(human non-vocal {hnv:.2f}{'; a human class was the top guess' if human_top else ''})")
         elif hnv is not None and ev.hits >= 2:
             verified = "multi"
         elif ev.hits < 2 and self.cfg.get("verify_single", True):
@@ -545,14 +547,19 @@ class Engine:
         good = sum(v >= float(self.cfg.get("verify_min_score", 0.5)) for v in scores)
         return ("ok" if good >= int(self.cfg.get("verify_min_windows", 2)) else "failed"), max(scores, default=0.0)
 
-    def _human_noise(self, audio: np.ndarray) -> float:
-        """Max BirdNET "Human non-vocal" score over the clip (3 s windows every 0.5 s)."""
+    def _human_noise(self, audio: np.ndarray):
+        """Over the clip (3 s windows every 0.5 s): the max "Human non-vocal"
+        score, and whether a Human class was ever BirdNET's top guess."""
         x = audio.astype(np.float32) / 32768.0
         if len(x) < WIN:
             x = np.pad(x, (0, WIN - len(x)))
         sens = float(self.cfg["sensitivity"])
-        return max(float(self.net.predict(x[s:s + WIN], sens)[self.hnv_idx])
-                   for s in range(0, len(x) - WIN + 1, SR // 2))
+        best, top = 0.0, False
+        for s in range(0, len(x) - WIN + 1, SR // 2):
+            p = self.net.predict(x[s:s + WIN], sens)
+            best = max(best, float(p[self.hnv_idx]))
+            top = top or int(np.argmax(p)) in self.human_idxs
+        return best, top
 
     def close_all(self):
         for ev in list(self.events.values()):

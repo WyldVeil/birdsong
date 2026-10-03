@@ -97,6 +97,7 @@ class Events(unittest.TestCase):
         e.net.predict = lambda x, sens=1.0: np.zeros(2, dtype=np.float32)     # re-check finds nothing
         e.sci_index = {"Erithacus rubecula": 0, "Turdus migratorius": 1}
         e.hnv_idx = 1                                                        # stub "Human non-vocal" slot
+        e.human_idxs = {1}
         e.tiers = np.array([1, 3], dtype=np.int8)
         e.events = {}
         e.ring = E.Ring(40)
@@ -168,11 +169,18 @@ class Events(unittest.TestCase):
         e._hit(0, 0.9, t - 3, t, 0)
         e._close(e.events["Erithacus rubecula"])
         self.assertEqual(self.verdict(2), "ok")                   # no human noise, and it re-checks fine
+        human["v"] = 0.95                                         # human is BirdNET's top guess...
+        e.cfg["human_guard_threshold"] = 0.99                     # ...though under the score threshold
+        e._hit(0, 0.9, t - 4.5, t - 1.5, 0)
+        e._hit(0, 0.9, t - 3, t, 0)
+        e._close(e.events["Erithacus rubecula"])
+        self.assertEqual(self.verdict(3), "human")
+        e.cfg["human_guard_threshold"] = 0.25
         e.cfg["human_guard_species"] = []                         # unguarded: never held for human noise
         human["v"] = 0.9
         e._hit(0, 0.9, t - 4.5, t - 1.5, 0)
         e._hit(0, 0.9, t - 3, t, 0)
-        self.assertEqual(self.verdict(3), "multi")
+        self.assertEqual(self.verdict(4), "multi")
 
     def test_vagrant_rules(self):
         e, t = self.e, time.time() - 100
