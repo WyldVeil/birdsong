@@ -48,6 +48,8 @@
 }
 
 * { box-sizing: border-box; }
+/* `hidden` must always win over component display rules (.more-btn, .nav button...). */
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
 body {
   margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans);
@@ -958,12 +960,16 @@ async function loadLog(append) {
   const P = S.period; if (!P) return;
   const q = new URLSearchParams({ limit: NARROW ? 15 : 40 });
   if (S.span !== "all") { q.set("from", P.start); q.set("to", P.end); }
-  if (append && S.logBefore) q.set("before", S.logBefore);
+  if (append) {
+    if (!S.logBefore) return;              // nothing older to fetch
+    q.set("before", S.logBefore);
+  }
   const L = await api("api/log?" + q);
   const el = $("#log");
   const html = L.items.map(logRow).join("");
   if (append) el.insertAdjacentHTML("beforeend", html); else el.innerHTML = html || `<div class="empty-note">No detections in this period yet.</div>`;
-  S.logBefore = L.items.length ? L.items[L.items.length - 1].id : null;
+  if (L.items.length) S.logBefore = L.items[L.items.length - 1].id;
+  else if (!append) S.logBefore = null;
   $("#logMore").hidden = !L.more;
   wireRows(el);
 }
