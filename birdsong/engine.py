@@ -385,6 +385,7 @@ class Engine:
         self.live = LiveSpectrum()
         self.status = {"started": time.time(), "level_db": None, "peak": 0.0}
         self.windows_today, self.day = 0, None
+        self.seconds_today = 0.0     # summed per window, so a step change can't rewrite the past
         self.low_disk = False
         self.last_tick = 0.0
         self.clip_q = queue.Queue()
@@ -448,9 +449,10 @@ class Engine:
         day = time.strftime("%Y-%m-%d", time.localtime(t_end))
         if day != self.day:
             self.day = day
-            row = self.db.execute("SELECT windows FROM daily WHERE day=?", (day,)).fetchone()
-            self.windows_today = row[0] if row else 0
+            row = self.db.execute("SELECT windows, seconds FROM daily WHERE day=?", (day,)).fetchone()
+            self.windows_today, self.seconds_today = (row[0], float(row[1])) if row else (0, 0.0)
         self.windows_today += 1
+        self.seconds_today += float(self.cfg["step_s"])
         p = self.net.predict(x, float(self.cfg["sensitivity"]))
         human = float(p[self.human_idx])
         for i in np.where(p >= self.thresh)[0]:
@@ -608,7 +610,7 @@ class Engine:
             self.last_tick = time.time()
             self.db.execute("INSERT INTO daily(day, windows, seconds) VALUES (?,?,?) "
                             "ON CONFLICT(day) DO UPDATE SET windows=excluded.windows, seconds=excluded.seconds",
-                            (self.day, self.windows_today, self.windows_today * float(self.cfg["step_s"])))
+                            (self.day, self.windows_today, self.seconds_today))
             self.db.commit()
 
     def snapshot(self, since: int = 0) -> dict:
