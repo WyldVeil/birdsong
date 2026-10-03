@@ -326,6 +326,20 @@ dialog::backdrop { background: rgba(5,8,7,.66); backdrop-filter: blur(6px); -web
 
 footer { margin: 80px 0 40px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--ink-3); font-size: 12.5px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 14px; }
 footer .mic-note { display: block; margin-top: 8px; }
+.trust { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.tchip { display: inline-flex; align-items: center; gap: 8px; padding: 4px 6px 4px 4px; border-radius: 999px; background: var(--card); border: 1px solid var(--line-2); font-size: 13.5px; }
+.tchip img, .tchip .ph { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; background: var(--card-3); }
+.tchip button { border: 0; background: none; color: var(--ink-3); cursor: pointer; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; }
+.tchip button:hover { color: var(--bad); background: var(--card-3); }
+.trust-add { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.trust-add .err { color: var(--bad); font-size: 13px; }
+button.tchip { cursor: pointer; color: var(--ink); padding-right: 10px; }
+button.tchip:hover { border-color: var(--ink-3); }
+.tchip .lvtag { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
+.tchip.lv1 .lvtag { color: var(--live); } .tchip.lv3 .lvtag, .tchip.lv4 .lvtag { color: var(--warn); } .tchip.lv5 .lvtag { color: var(--bad); }
+.rule { width: min(460px, calc(100vw - 24px)); }
+#ruleDlg, #loginDlg { width: fit-content; }
+.btn[disabled] { opacity: .4; cursor: default; }
 footer button { background: none; border: 0; color: var(--ink-3); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; padding: 0; font-size: 12.5px; }
 footer a { color: var(--ink-2); }
 .skel { background: linear-gradient(90deg, var(--card-2), var(--card-3), var(--card-2)); background-size: 200% 100%; animation: sk 1.4s linear infinite; }
@@ -487,6 +501,7 @@ footer a { color: var(--ink-2); }
   </form>
 </dialog>
 <dialog id="admDlg" aria-label="Admin"><div class="sheet adm" id="admSheet"></div></dialog>
+<dialog id="ruleDlg" aria-label="Detection rules"><div class="sheet form rule" id="ruleSheet"></div></dialog>
 
 <script>
 "use strict";
@@ -500,6 +515,7 @@ const DAY = 86400000;
 const NARROW = matchMedia("(max-width: 640px)").matches;
 
 const ICON = {
+  sliders: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>',
   play: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>',
   pause: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>',
   star: '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>',
@@ -985,9 +1001,10 @@ function logRow(d, opts = {}) {
     if (d.hidden) flags.push('<span class="flag">hidden</span>');
     if (d.verified === "failed") flags.push(`<span class="flag" style="color:var(--bad)" title="Heard in one window only, and BirdNET didn't find it again when the window was shifted (best ${pct(d.verify_score)}). Not shown publicly or sent to BirdWeather. Listen, and approve with ✓ if it's real.">unverified</span>`);
     if (d.verified === "human") flags.push(`<span class="flag" style="color:var(--bad)" title="BirdNET heard human noise (sniffs, breathing, coughs) in this clip, and this species is one such noises can imitate. Not shown publicly or sent to BirdWeather. Listen, and approve with ✓ if it's real.">human noise nearby</span>`);
+    if (d.verified === "review") flags.push('<span class="flag" style="color:var(--bad)" title="This species is set to wait for your review (Strict or Review all). Approve with ✓.">awaiting review</span>');
     if (d.verified === "pending") flags.push('<span class="flag" title="Being checked; decided when the bird stops calling">checking…</span>');
   }
-  return `<div class="row${d.hidden ? " hidden-det" : ""}" data-id="${d.id}" data-slug="${esc(d.slug || "")}">
+  return `<div class="row${d.hidden ? " hidden-det" : ""}" data-id="${d.id}" data-slug="${esc(d.slug || "")}" data-sci="${esc(d.sci || "")}">
     <div class="tm num">${tTime(d.start, true)}${showDate ? `<small>${tDate(d.start, { day: "numeric", month: "short" })}</small>` : `<small>${d.end - d.start > 3.5 ? Math.round(d.end - d.start) + "s" : "3s"}</small>`}</div>
     ${d.slug !== undefined && !opts.noAvatar ? (d.photo ? `<img class="av" src="${imgSm(d)}" alt="" loading="lazy">` : `<span class="av"></span>`) : "<span></span>"}
     <div class="nm"><b>${esc(d.common || "")} ${tierBadge(d.tier)} ${flags.join(" ")}</b><i>${esc(d.sci)}</i></div>
@@ -1001,8 +1018,9 @@ function logRow(d, opts = {}) {
 function adminBtns(d) {
   return `<button class="ib" data-a="play" title="Play clip" ${d.clip ? "" : "disabled"}>${ICON.play}</button>
     <button class="ib${d.saved ? " on" : ""}" data-a="${d.saved ? "unsave" : "save"}" title="${d.saved ? "Saved (won't auto-delete). Click to unsave" : "Save clip (keep forever)"}" ${d.clip || d.saved ? "" : "disabled"}>${ICON.star}</button>
-    ${d.review === "pending" || d.verified === "failed" || d.verified === "human" ? `<button class="ib" data-a="confirm" title="${d.verified === "failed" || d.verified === "human" ? "It's real: approve (shows publicly and goes to BirdWeather)" : "Confirm this rarity"}">${ICON.check}</button>` : ""}
-    <button class="ib${d.hidden ? " on" : ""}" data-a="${d.hidden ? "unhide" : "hide"}" title="${d.hidden ? "Unhide" : "Hide (false positive)"}">${ICON.hide}</button>`;
+    ${d.review === "pending" || ["failed", "human", "review"].includes(d.verified) ? `<button class="ib" data-a="confirm" title="${["failed", "human", "review"].includes(d.verified) ? "It's real: approve (shows publicly and goes to BirdWeather)" : "Confirm this rarity"}">${ICON.check}</button>` : ""}
+    <button class="ib${d.hidden ? " on" : ""}" data-a="${d.hidden ? "unhide" : "hide"}" title="${d.hidden ? "Unhide" : "Hide (false positive)"}">${ICON.hide}</button>
+    <button class="ib" data-a="rules" title="Detection rules for this species">${ICON.sliders}</button>`;
 }
 
 function wireRows(el) {
@@ -1019,6 +1037,7 @@ function wireRows(el) {
 let audio = null, audioBtn = null;
 async function adminAct(row, a, btn) {
   const id = row.dataset.id;
+  if (a === "rules") { openRule(row.dataset.sci); return; }
   if (a === "play") {
     if (audioBtn === btn && audio && !audio.paused) { audio.pause(); return; }
     if (audio) { audio.pause(); if (audioBtn) { audioBtn.innerHTML = ICON.play; audioBtn.classList.remove("playing"); } }
@@ -1082,13 +1101,80 @@ async function openAdmin() {
       <div><b class="${st.birdweather && st.birdweather.failed ? "down" : ""}">${st.birdweather && st.birdweather.enabled ? fmtN(st.birdweather.sent || 0) : "Off"}</b><span>sent to BirdWeather${st.birdweather && st.birdweather.enabled ? ` (${st.birdweather.audio ? "with" : "no"} audio)${st.birdweather.queued ? ` · ${fmtN(st.birdweather.queued)} queued` : ""}${st.birdweather.failed ? ` · ${fmtN(st.birdweather.failed)} failed` : ""}` : ""}</span></div>
     </div>
     <p class="note">Clips are kept ${cfg.clip_days} days, capped at ${fmtN(cfg.max_clip_mb)} MB (oldest go first), and nothing new is recorded if the drive drops below ${cfg.min_free_gb} GB free. Starred clips are never deleted. Thresholds: ${pct(cfg.min_conf)} expected species, ${pct(cfg.unusual_conf)} unusual, ${pct(cfg.vagrant_conf)} rarities (which stay hidden from the public until you confirm them).${e.mic_error ? `<br><b class="down">Mic: ${esc(e.mic_error)}</b>` : ""}${clipped ? `<br><b class="down">The mic clipped in the last hour. Lower the Rear Microphone level a little.</b>` : ""}</p>
+    <div><h4 class="serif" style="margin:0 0 4px;font-size:18px">Species rules</h4>
+      <p class="note" style="margin:0 0 10px">How carefully each bird is checked before it appears. Everything not listed is <b>Standard</b>. Click a bird to change it, or use the <span style="display:inline-flex;vertical-align:middle">${ICON.sliders}</span> button on any detection.</p>
+      <div class="trust" id="ruleList"></div>
+      <div class="trust-add"><input class="search" id="ruleIn" list="ruleOpts" placeholder="Set rules for another species…" autocomplete="off"><datalist id="ruleOpts"></datalist><button class="btn ghost" id="ruleAdd" type="button">Open</button><span class="err" id="ruleErr"></span></div>
+    </div>
     <div><h4 class="serif" style="margin:0 0 8px;font-size:18px">Review, hidden &amp; saved</h4>
     <div class="card"><div class="log" id="admLog">${rv.items.length ? rv.items.map(d => logRow(d, { date: true })).join("") : `<div class="empty-note">Nothing to review.</div>`}</div></div></div>`;
   wireRows($("#admLog"));
+  renderRules(st.rules || { rules: [], names: {} });
   $("#admX").onclick = () => $("#admDlg").close();
   $("#admOut").onclick = async () => { await api("api/logout", { body: {} }); $("#admDlg").close(); await checkMe(); refreshAll(); };
 }
 $("#admDlg").addEventListener("close", () => { if (audio) audio.pause(); });
+
+const LEVEL_TEXT = {
+  1: "One window is enough. Detections appear straight away with no extra checks. Best for very common birds that household sounds don't imitate.",
+  2: "Normal checks. If heard in only one window, BirdNET re-scores it with the window shifted; it only appears if it's still found.",
+  3: "Standard checks, plus the human-noise guard: held until the bird stops, and kept back if sniffs, breathing or coughs are in the clip.",
+  4: "Guarded, and anything heard in only one window always waits for your review (✓).",
+  5: "Every detection of this species waits for your review (✓) before it appears or goes to BirdWeather.",
+};
+async function renderRules(R) {
+  const list = $("#ruleList");
+  list.innerHTML = R.rules.length ? R.rules.map(b => `<button type="button" class="tchip lv${b.level}" data-sci="${esc(b.sci)}" title="${esc(R.names[b.level] || "")}${b.level !== b.default ? " (changed from " + esc(R.names[b.default] || "") + ")" : " (default)"}">${avatar(b)}<span>${esc(b.common)}</span><span class="lvtag">${esc(R.names[b.level] || "")}</span></button>`).join("")
+    : `<span class="muted" style="font-size:13px">Every species is on Standard.</span>`;
+  $$("button[data-sci]", list).forEach(btn => btn.onclick = () => openRule(btn.dataset.sci));
+  if (!S.species) { try { S.species = (await api("api/species")).species; } catch (_) { S.species = []; } }
+  const opts = [...S.species].sort(SORTS.most);
+  $("#ruleOpts").innerHTML = opts.map(s => `<option value="${esc(s.common)}"></option>`).join("");
+  const go = () => {
+    const name = $("#ruleIn").value.trim().toLowerCase();
+    const s = opts.find(o => o.common.toLowerCase() === name || o.sci.toLowerCase() === name);
+    if (!s) { $("#ruleErr").textContent = name ? "Pick a species from the list." : ""; return; }
+    $("#ruleErr").textContent = ""; $("#ruleIn").value = ""; openRule(s.sci);
+  };
+  $("#ruleAdd").onclick = go;
+  $("#ruleIn").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); go(); } };
+}
+async function openRule(sci) {
+  if (!sci) return;
+  let r;
+  try { r = await api(`api/admin/rule?sci=${encodeURIComponent(sci)}`); } catch (e) { alert("Couldn't load this species' rules."); return; }
+  const sh = $("#ruleSheet");
+  sh.innerHTML = `<div style="display:flex;align-items:center;gap:12px">${avatar(r, "rule-av")}<div><h3 style="margin:0">${esc(r.common)}</h3><div class="muted" style="font:italic 13px var(--serif)">${esc(r.sci)}</div></div></div>
+    <label for="ruleSl" class="muted" style="font-size:13px;margin-top:6px">How carefully should it be checked?</label>
+    <input type="range" id="ruleSl" min="1" max="5" step="1" value="${r.level}">
+    <div class="rule-ticks">${[1, 2, 3, 4, 5].map(i => `<span>${esc(r.names[i])}</span>`).join("")}</div>
+    <p class="rule-desc" id="ruleDesc"></p>
+    ${r.noise_prone ? `<p class="note" style="color:var(--warn);margin:0">People's sounds near the mic can imitate this species (e.g. sniffs as owls). Below Guarded, those can get through.</p>` : ""}
+    <p class="note" style="margin:0">Default for this species: <b>${esc(r.names[r.default])}</b>. Changes apply to new detections within 30 seconds.</p>
+    <div class="err" id="ruleSaveErr"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn ghost" type="button" id="ruleReset" ${r.level === r.default ? "disabled" : ""}>Reset to default</button>
+      <button class="btn ghost" type="button" id="ruleCancel">Cancel</button>
+      <button class="btn" type="button" id="ruleSave">Save</button></div>`;
+  const sl = $("#ruleSl", sh);
+  const upd = () => {
+    const lv = +sl.value;
+    $("#ruleDesc", sh).innerHTML = `<b>${esc(r.names[lv])}</b>${lv === r.level ? " (current)" : ""}: ${esc(LEVEL_TEXT[lv])}`;
+    $$(".rule-ticks span", sh).forEach((t, i) => t.classList.toggle("on", i + 1 === lv));
+  };
+  sl.oninput = upd; upd();
+  const save = async lv => {
+    try {
+      const res = await api("api/admin/rule", { body: { sci: r.sci, level: lv } });
+      $("#ruleDlg").close();
+      if ($("#ruleList")) renderRules(res);
+    } catch (e) { $("#ruleSaveErr", sh).textContent = e.message; }
+  };
+  $("#ruleSave", sh).onclick = () => save(+sl.value);
+  $("#ruleReset", sh).onclick = () => save(null);
+  $("#ruleCancel", sh).onclick = () => $("#ruleDlg").close();
+  $("#ruleDlg").showModal();
+}
 
 // ---------- species modal ----------
 async function openSpecies(slug) {
@@ -1146,7 +1232,7 @@ $("#spDlg").addEventListener("close", () => {
   if (audio) audio.pause();
   try { history.replaceState(null, "", `#${S.span}/${S.date}`); } catch (_) {}
 });
-for (const d of ["#spDlg", "#admDlg", "#loginDlg"]) {
+for (const d of ["#spDlg", "#admDlg", "#loginDlg", "#ruleDlg"]) {
   $(d).addEventListener("click", e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 }
 

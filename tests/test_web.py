@@ -277,6 +277,32 @@ class Filters(Server):
         self.assertTrue({"verified", "verify_score"} <= cols)
 
 
+class Rules(Server):
+    def test_levels_set_reset_and_saved(self):
+        self.app.cfg["human_guard_species"] = ["Bombycilla garrulus"]
+        r = self.json("api/admin/rule?sci=Erithacus%20rubecula", admin=True)
+        self.assertEqual((r["level"], r["default"], r["noise_prone"]), (2, 2, False))
+        self.assertTrue(self.json("api/admin/rule?sci=Bombycilla%20garrulus", admin=True)["noise_prone"])
+        status, _h, body = self.req("/api/admin/rule", "POST", {"sci": "Erithacus rubecula", "level": 1},
+                                    {"X-Birds": "1"}, admin=True)
+        res = json.loads(body)
+        self.assertEqual(res["rule"]["level"], 1)
+        self.assertEqual({x["sci"]: x["level"] for x in res["rules"]}, {"Erithacus rubecula": 1, "Bombycilla garrulus": 3})
+        self.assertEqual(C.load(self.tmp)["species_levels"], {"Erithacus rubecula": 1})   # saved to disk
+        status, _h, body = self.req("/api/admin/rule", "POST", {"sci": "Erithacus rubecula", "level": None},
+                                    {"X-Birds": "1"}, admin=True)
+        self.assertEqual(json.loads(body)["rule"]["level"], 2)
+        for bad in ({"sci": "Erithacus rubecula", "level": 7}, {"sci": "Erithacus rubecula", "level": True},
+                    {"sci": "Made upus", "level": 2}):
+            self.assertEqual(self.req("/api/admin/rule", "POST", bad, {"X-Birds": "1"}, admin=True)[0], 400)
+        self.assertEqual(self.req("/api/admin/rule?sci=Erithacus%20rubecula")[0], 404)       # admin only
+
+    def test_review_level_is_admin_only(self):
+        d = self.add("Erithacus rubecula", time.time() - 30, verified="review")
+        self.assertNotIn(d, {x["id"] for x in self.json("api/log")["items"]})
+        self.assertIn(d, {x["id"] for x in self.json("api/admin/review", admin=True)["items"]})
+
+
 class SecretPath(Server):
     base_path = "/k3j9x2q8/hidden/"
 

@@ -67,6 +67,14 @@ DEFAULTS = {
                             "Asio flammeus", "Melanitta nigra"],
     "human_guard_threshold": 0.25,
     "human_guard_top_class": True,  # ...or if a Human class is BirdNET's top guess in any window
+    # Per-species detection rules (set with the slider in the admin panel), sci -> level:
+    #   1 trusted   one window is enough, published at once
+    #   2 standard  single-window detections get the shifted re-check (the default)
+    #   3 guarded   standard + human-noise guard (default for human_guard_species)
+    #   4 strict    guarded + single-window detections wait for admin review
+    #   5 review    every detection waits for admin approval
+    "species_levels": {},
+    "trusted_species": [],        # shortcut list for level 1; empty by default
 
     # --- storage
     "clip_days": 30,

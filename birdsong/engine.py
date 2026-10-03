@@ -479,8 +479,8 @@ class Engine:
             return
         # "pending" = not public yet: heard in one window so far (re-checked when
         # it closes), or a human-noise-guarded species (checked when it closes).
-        guarded = self._guarded(ev.sci)
-        held = (ev.hits < 2 and self.cfg.get("verify_single", True)) or guarded
+        guarded, trusted = self._guarded(ev.sci), self._trusted(ev.sci)
+        held = ((ev.hits < 2 and self.cfg.get("verify_single", True)) or guarded) and not trusted
         if not ev.inserted:
             self.db.execute("INSERT OR IGNORE INTO species(sci, common, tier, slug) VALUES (?,?,?,?)",
                             (ev.sci, self.net.common[i], ev.tier, slugify(ev.sci)))
@@ -489,7 +489,8 @@ class Engine:
                 "INSERT INTO detections(sci, start, end, day, hour, conf, hits, tier, review, verified) "
                 "VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (ev.sci, ev.start, ev.end, time.strftime("%Y-%m-%d", lt), lt.tm_hour, round(ev.conf, 4),
-                 ev.hits, ev.tier, "pending" if ev.tier == 3 else "", "pending" if held else "multi"))
+                 ev.hits, ev.tier, "pending" if ev.tier == 3 else "",
+                 "pending" if held else ("trusted" if trusted and ev.hits < 2 else "multi")))
             ev.id, ev.inserted = cur.lastrowid, True
         else:
             self.db.execute("UPDATE detections SET end=?, conf=?, hits=?, verified=CASE WHEN ?>=2 AND "
@@ -518,9 +519,11 @@ class Engine:
             verified = "human"
             log.info(f"human-noise guard held back {self.net.common[self.sci_index[ev.sci]]} "
                      f"(human non-vocal {hnv:.2f}{'; a human class was the top guess' if human_top else ''})")
+        elif self._level(ev.sci) == 5 or (self._level(ev.sci) == 4 and ev.hits < 2):
+            verified = "review"                   # the admin asked to approve these by hand
         elif hnv is not None and ev.hits >= 2:
             verified = "multi"
-        elif ev.hits < 2 and self.cfg.get("verify_single", True):
+        elif ev.hits < 2 and self.cfg.get("verify_single", True) and not self._trusted(ev.sci):
             verified, vscore = self._verify(ev.sci, audio, self.ring.index_of(ev.start) - a_eff)
             log.info(f"re-check {self.net.common[self.sci_index[ev.sci]]} {ev.conf:.0%}: {verified} "
                      f"(best shifted score {vscore:.2f})")
@@ -531,8 +534,22 @@ class Engine:
         if len(audio) >= SR:
             self.clip_q.put((ev.id, ev.start, audio))
 
+    def _level(self, sci: str) -> int:
+        """1 trusted .. 5 review-all; see species_levels in config.py."""
+        lv = (self.cfg.get("species_levels") or {}).get(sci)
+        if isinstance(lv, int) and 1 <= lv <= 5:
+            return lv
+        if sci in set(self.cfg.get("human_guard_species") or ()):
+            return 3                      # never trusted by default: sniffs can imitate it
+        if sci in set(self.cfg.get("trusted_species") or ()):
+            return 1
+        return 2
+
+    def _trusted(self, sci: str) -> bool:
+        return self._level(sci) == 1
+
     def _guarded(self, sci: str) -> bool:
-        return sci in set(self.cfg.get("human_guard_species") or ())
+        return self._level(sci) >= 3
 
     def _verify(self, sci: str, audio: np.ndarray, orig: int):
         """Re-score `sci` with the 3 s window shifted +/-0.25..1.0 s from `orig`
@@ -603,7 +620,7 @@ class Engine:
             "low_disk": self.low_disk, "seq": seq, "bands": LiveSpectrum.BANDS, "col_rate": 20, "cols": cols,
             "hearing": [{"sci": e.sci, "conf": round(e.conf, 3), "since": e.start}
                         for e in list(self.events.values())
-                        if e.inserted and e.tier < 3 and e.hits >= 2 and not self._guarded(e.sci)],
+                        if e.inserted and e.tier < 3 and (e.hits >= 2 or self._trusted(e.sci)) and not self._guarded(e.sci)],
         }
 
 
@@ -861,7 +878,7 @@ def birdweather_pass(data: str, db, cfg: dict, names: dict, now: float = None, r
     due = db.execute(
         "SELECT d.*, b.tries FROM detections d LEFT JOIN birdweather b ON b.det_id=d.id "
         "WHERE d.open=0 AND d.start>=? AND d.hidden=0 AND (d.tier<3 OR d.review='confirmed') "
-        "AND d.verified NOT IN ('pending','failed','human') "
+        "AND d.verified NOT IN ('pending','failed','human','review') "
         "AND (b.det_id IS NULL OR (b.status='retry' AND b.next_try<=?)) ORDER BY d.start LIMIT ?",
         (since, now, limit)).fetchall()
     pad = float(cfg.get("clip_pad_s", 2.0))

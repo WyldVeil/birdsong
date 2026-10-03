@@ -182,6 +182,30 @@ class Events(unittest.TestCase):
         e._hit(0, 0.9, t - 3, t, 0)
         self.assertEqual(self.verdict(4), "multi")
 
+    def test_species_levels(self):
+        e = self.e
+        t = e.ring.time_of(e.ring.total) - 6
+        self.assertEqual(e._level("Erithacus rubecula"), 2)
+        e.cfg["trusted_species"] = ["Erithacus rubecula"]
+        e._hit(0, 0.72, t - 3, t, 0)                              # stub re-check would fail it...
+        e._close(e.events["Erithacus rubecula"])
+        self.assertEqual(self.verdict(1), "trusted")              # ...but trusted skips it
+        e.cfg["trusted_species"] = []
+        e.net.predict = lambda x, sens=1.0: np.array([0.9, 0.0], dtype=np.float32)    # re-check would pass
+        e.cfg["species_levels"] = {"Erithacus rubecula": 4}       # strict: one window -> review
+        e._hit(0, 0.9, t - 3, t, 0)
+        e._close(e.events["Erithacus rubecula"])
+        self.assertEqual(self.verdict(2), "review")
+        e.cfg["species_levels"] = {"Erithacus rubecula": 5}       # review all: even two windows
+        e._hit(0, 0.9, t - 4.5, t - 1.5, 0)
+        e._hit(0, 0.9, t - 3, t, 0)
+        e._close(e.events["Erithacus rubecula"])
+        self.assertEqual(self.verdict(3), "review")
+        e.cfg["species_levels"] = {}
+        e.cfg["human_guard_species"] = ["Erithacus rubecula"]
+        e.cfg["trusted_species"] = ["Erithacus rubecula"]
+        self.assertEqual(e._level("Erithacus rubecula"), 3)      # guarded is never trusted by default
+
     def test_vagrant_rules(self):
         e, t = self.e, time.time() - 100
         e._hit(1, 0.97, t, t + 3, 0)

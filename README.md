@@ -40,8 +40,9 @@ double-click; no Python install, no admin rights, no account, no cloud.
   or delete each clip. Visitors can't hear anything, because a microphone in a
   house picks up more than birds.
 - **Extra false-detection filters on top of BirdNET.** A shifted re-check
-  catches hits on background noise, and a human-noise guard stops sniffs
-  becoming "owls" (see below).
+  catches hits on background noise, a human-noise guard stops sniffs becoming
+  "owls", and a per-species slider lets you trust your garden regulars or
+  review anything doubtful (see below).
 - **Looks after itself.** Clips are deleted after 30 days unless starred, total
   clip space is capped, and recording pauses if the disk gets low.
 - **Optional BirdWeather sharing.** Your detections can appear on
@@ -142,6 +143,7 @@ click (✓) approves it if you listen and it's real.
 | **3. Shifted re-check** | Hits on background noise | See below. |
 | **4. Human-noise guard** | Sniffs, breathing and coughs mistaken for owls | See below. |
 | **5. Overlapping windows** | Real calls cut in half by a window edge | See below. |
+| **6. Your own species rules** | Whatever your site needs | A per-species slider in the admin panel. See below. |
 
 ### 3. Shifted re-check (for detections heard in one window)
 
@@ -219,6 +221,35 @@ found that raising overlap from the default 0 to about 2 seconds improved
 performance, both for detecting calls and for describing which birds are
 present. The cost is about one BirdNET run per second: a few percent of one
 CPU core on a desktop.
+
+### 6. Your own species rules
+
+Every station is different. A bird that's constant in one garden is a rarity
+in another, and some microphones get fooled by sounds peculiar to their room.
+So each species has a **detection level** that you can change with a slider:
+
+| Level | What happens |
+|---|---|
+| **Trusted** | One window is enough. Appears straight away, no extra checks. For birds that are extremely common at your site and that household sounds don't imitate. |
+| **Standard** | The normal checks (layer 3). The default for almost every species. |
+| **Guarded** | Standard plus the human-noise guard (layer 4). The default for owls and Common Scoter. |
+| **Strict** | Guarded, and anything heard in only one window waits for your review. |
+| **Review all** | Every detection of this species waits for your ✓. |
+
+How to use it:
+
+- **Open it from any detection.** In admin mode every detection has a rules
+  button (sliders icon), which opens the slider for that species, starting at
+  its current level.
+- **See every changed species at a glance.** The **Species rules** section of
+  the admin panel lists every species not at Standard; click one to change it,
+  or pick any other species from the box.
+- **Changes take effect at once** for new detections and are saved to
+  `data/config.json`.
+- **Nothing is trusted out of the box.** That's your call, based on what you
+  hear.
+- **Owls and other noise-prone species warn you** if you lower them below
+  Guarded, since sniffs and breathing can then get through.
 
 ## Using it
 
@@ -393,6 +424,8 @@ the file by hand (stop Birdsong first):
 | `human_guard_threshold` | 0.25 | BirdNET "Human non-vocal" score that counts as human noise |
 | `human_guard_top_class` | true | Also count it as human noise when a Human class is BirdNET's top guess |
 | `step_s` | 1.0 | Seconds between analysis windows (1.0 = 2 s overlap) |
+| `species_levels` | *(empty)* | Per-species levels set with the admin slider: 1 Trusted … 5 Review all |
+| `trusted_species` | *(empty)* | Shortcut list of species that start at Trusted |
 | `birdweather_token` | *(empty = off)* | BirdWeather station token (set with `birdweather`) |
 | `birdweather_audio` | false | Also send a FLAC clip with each detection (never clips with speech) |
 | `microphone` | *(empty)* | Microphone name shown at the bottom of the page |

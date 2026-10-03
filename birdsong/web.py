@@ -30,7 +30,7 @@ STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 # are holding ("pending" until checked) or rejected ("failed" re-check,
 # "human" noise guard). The admin sees those in the review list.
 PUBLIC_SQL = ("d.hidden=0 AND (d.tier<3 OR d.review='confirmed') "
-              "AND d.verified NOT IN ('pending','failed','human')")
+              "AND d.verified NOT IN ('pending','failed','human','review')")
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 COOKIE = "birdsong_admin"
@@ -123,7 +123,7 @@ def _det(r, admin):
 
 
 def _vis(admin):
-    return "d.hidden=0 AND d.verified NOT IN ('failed','human')" if admin else PUBLIC_SQL
+    return "d.hidden=0 AND d.verified NOT IN ('failed','human','review')" if admin else PUBLIC_SQL
 
 
 def _ts(d: date) -> float:
@@ -400,7 +400,8 @@ def api_admin_status(app: App) -> dict:
                             "COALESCE(SUM(CASE WHEN tier=3 AND review='pending' AND hidden=0 THEN 1 ELSE 0 END),0), "
                             "COALESCE(SUM(hidden),0) FROM detections").fetchone()
             out.update(clips=r[0], clip_bytes=r[1], saved=r[2], pending=r[3], hidden=r[4])
-            out["unverified"] = con.execute("SELECT COUNT(*) FROM detections WHERE verified IN ('failed','human') "
+            out["rules"] = api_rules(app)
+            out["unverified"] = con.execute("SELECT COUNT(*) FROM detections WHERE verified IN ('failed','human','review') "
                                             "AND hidden=0").fetchone()[0]
             bw = dict(con.execute("SELECT status, COUNT(*) FROM birdweather GROUP BY status").fetchall())
             out["birdweather"] = {"enabled": bool(cfg.get("birdweather_token")), "audio": bool(cfg.get("birdweather_audio")),
@@ -410,6 +411,63 @@ def api_admin_status(app: App) -> dict:
     return out
 
 
+LEVELS = {1: "Trusted", 2: "Standard", 3: "Guarded", 4: "Strict", 5: "Review all"}
+
+
+def _default_level(cfg: dict, sci: str) -> int:
+    if sci in (cfg.get("human_guard_species") or []):
+        return 3
+    if sci in (cfg.get("trusted_species") or []):
+        return 1
+    return 2
+
+
+def _level(cfg: dict, sci: str) -> int:
+    lv = (cfg.get("species_levels") or {}).get(sci)
+    return lv if isinstance(lv, int) and 1 <= lv <= 5 else _default_level(cfg, sci)
+
+
+def api_rules(app: App) -> dict:
+    """Species whose level isn't Standard, or that the admin has set by hand."""
+    cfg = app.cfg
+    levels = cfg.get("species_levels") or {}
+    scis = set(cfg.get("human_guard_species") or []) | set(cfg.get("trusted_species") or []) | set(levels)
+    con = app.connect()
+    sp = app.species(con) if con is not None else {}
+    if con is not None:
+        con.close()
+    rows = [dict(_brief(sp, s), level=_level(cfg, s), default=_default_level(cfg, s))
+            for s in scis if s in sp and (_level(cfg, s) != 2 or s in levels)]   # only species this station knows
+    rows.sort(key=lambda r: (r["level"], r["common"]))
+    return {"rules": rows, "names": LEVELS}
+
+
+def api_rule(app: App, sci: str):
+    con = app.connect()
+    sp = app.species(con) if con is not None else {}
+    if con is not None:
+        con.close()
+    if sci not in sp:
+        return None
+    return dict(_brief(sp, sci), level=_level(app.cfg, sci), default=_default_level(app.cfg, sci),
+                noise_prone=sci in (app.cfg.get("human_guard_species") or []), names=LEVELS)
+
+
+def set_rule(app: App, sci: str, level):
+    """Set (1..5) or reset (None) one species' level. The engine shares this
+    config dict, so new detections use it at once; it's also saved to disk."""
+    if api_rule(app, sci) is None:
+        return None
+    levels = dict(app.cfg.get("species_levels") or {})
+    if level is None or level == _default_level(app.cfg, sci):
+        levels.pop(sci, None)
+    else:
+        levels[sci] = int(level)
+    app.cfg["species_levels"] = levels
+    C.save(app.cfg, app.data)
+    return api_rule(app, sci)
+
+
 def api_admin_review(app: App) -> dict:
     con = app.connect()
     if con is None:
@@ -417,7 +475,7 @@ def api_admin_review(app: App) -> dict:
     try:
         sp = app.species(con)
         rows = con.execute("SELECT * FROM detections d WHERE (d.tier=3 AND d.review='pending') OR d.hidden=1 "
-                           "OR d.saved=1 OR d.verified IN ('failed','human') ORDER BY d.start DESC LIMIT 300").fetchall()
+                           "OR d.saved=1 OR d.verified IN ('failed','human','review') ORDER BY d.start DESC LIMIT 300").fetchall()
         return {"items": [dict(_det(r, True), **_brief(sp, r["sci"])) for r in rows]}
     finally:
         con.close()
@@ -440,7 +498,7 @@ def admin_action(app: App, det_id: int, action: str):
             return None
         sql = {"save": "saved=1", "unsave": "saved=0", "hide": "hidden=1", "unhide": "hidden=0",
                "confirm": "review=CASE WHEN tier=3 THEN 'confirmed' ELSE review END, verified=CASE WHEN "
-                          "verified IN ('failed','pending','human') THEN 'ok' ELSE verified END, hidden=0"}.get(action)
+                          "verified IN ('failed','pending','human','review') THEN 'ok' ELSE verified END, hidden=0"}.get(action)
         if sql:
             con.execute(f"UPDATE detections SET {sql} WHERE id=?", (det_id,))
         elif action == "delete_clip":
@@ -636,7 +694,7 @@ class Handler(BaseHTTPRequestHandler):
             if r is None or not r["spectro"]:
                 return False
             if not admin and (r["speech"] or r["hidden"] or (r["tier"] == 3 and r["review"] != "confirmed")
-                              or r["verified"] in ("pending", "failed", "human")):
+                              or r["verified"] in ("pending", "failed", "human", "review")):
                 return False
             try:
                 return self.send_file(safe_path(app, r["spectro"]), "image/png", "private, max-age=86400")
@@ -706,6 +764,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, api_admin_status(app))
             if api == "admin/review" and admin:
                 return self.send_json(200, api_admin_review(app))
+            if api == "admin/rule" and admin:
+                data = api_rule(app, p.get("sci") or "")
+                return self.send_json(200, data) if data else False
             return False
 
         if method != "POST" or self.headers.get("X-Birds") != "1":   # CSRF guard
@@ -724,6 +785,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, {"ok": True}, extra=[self.cookie("", 0)])
         if not self.is_admin():
             return False
+        if api == "admin/rule":
+            body = self.read_json() or {}
+            lv = body.get("level")
+            if lv is not None and not (isinstance(lv, int) and not isinstance(lv, bool) and 1 <= lv <= 5):
+                return self.send_json(400, {"ok": False, "error": "level must be 1-5 or null"})
+            res = set_rule(app, str(body.get("sci") or "")[:100], lv)
+            if res is None:
+                return self.send_json(400, {"ok": False, "error": "unknown species"})
+            return self.send_json(200, {"ok": True, "rule": res, **api_rules(app)})
         if m := re.fullmatch(r"admin/det/(\d{1,10})", api):
             res = admin_action(app, int(m.group(1)), str((self.read_json() or {}).get("action") or ""))
             if res is None:
