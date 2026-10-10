@@ -1,6 +1,6 @@
 [project]
 name = "birdsong"
-version = "1.4.0"
+version = "1.5.0"
 description = "A 24/7 bird sound identifier (BirdNET) with a live web page, for Windows, Linux, macOS and Raspberry Pi"
 readme = "README.md"
 license = { text = "MIT" }
@@ -10,6 +10,7 @@ dependencies = [
     "ai-edge-litert>=1.2",
     "sounddevice>=0.4.6",
     "soundfile>=0.12.1",
+    "pillow>=10.0",
 ]
 
 [tool.uv]

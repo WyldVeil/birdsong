@@ -303,6 +303,50 @@ class Rules(Server):
         self.assertIn(d, {x["id"] for x in self.json("api/admin/review", admin=True)["items"]})
 
 
+class PauseAndSettings(Server):
+    def test_pause_endpoints(self):
+        h = {"X-Birds": "1"}
+        self.assertEqual(self.req("/api/admin/pause", "POST", {"minutes": 30}, h, admin=True)[0], 503)  # no engine
+        calls = []
+
+        class P:
+            def status(self): return {"paused": bool(calls and calls[-1] != "resume"), "until": None, "indefinite": True}
+            def pause(self, m): calls.append(m); return self.status()
+            def resume(self): calls.append("resume"); return self.status()
+        self.app.live.pauser = P()
+        self.assertEqual(self.req("/api/admin/pause", "POST", {"minutes": 30}, h)[0], 404)        # admin only
+        st, _h, body = self.req("/api/admin/pause", "POST", {"minutes": 30}, h, admin=True)
+        self.assertEqual((st, json.loads(body)["pause"]["paused"]), (200, True))
+        self.assertEqual(self.req("/api/admin/pause", "POST", {"minutes": 99999999}, h, admin=True)[0], 400)
+        self.req("/api/admin/pause", "POST", {"action": "resume"}, h, admin=True)
+        self.assertEqual(calls, [30.0, "resume"])
+        self.assertIn("pause", self.json("api/admin/status", admin=True))
+
+    def test_paused_page_is_offline(self):
+        self.app.live.snapshot = lambda since=0: dict(Live().snapshot(since), paused=True)
+        L = self.json("api/live")
+        self.assertEqual((L["online"], L["paused"], L["cols"]), (False, True, ""))
+
+    def test_review_keep_days(self):
+        h = {"X-Birds": "1"}
+        st, _h, body = self.req("/api/admin/settings", "POST", {"review_keep_days": 7}, h, admin=True)
+        self.assertEqual((st, json.loads(body)["review_keep_days"]), (200, 7))
+        self.assertEqual(C.load(self.tmp)["review_keep_days"], 7)
+        self.assertEqual(self.req("/api/admin/settings", "POST", {"review_keep_days": 999}, h, admin=True)[0], 400)
+        self.assertEqual(self.json("api/admin/status", admin=True)["review_keep_days"], 7)
+
+    def test_six_levels(self):
+        h = {"X-Birds": "1"}
+        self.app.cfg["species_levels"] = {"Turdus merula": 5}          # an old config: 5 was review all
+        r = self.json("api/admin/rule?sci=Turdus%20merula", admin=True)
+        self.assertEqual((r["level"], r["names"]["5"], r["names"]["6"]), (6, "Very strict", "Review all"))
+        st, _h, body = self.req("/api/admin/rule", "POST", {"sci": "Erithacus rubecula", "level": 5}, h, admin=True)
+        self.assertEqual(st, 200)
+        saved = C.load(self.tmp)
+        self.assertEqual((saved["species_levels"], saved["species_levels_scale"]),
+                         ({"Turdus merula": 6, "Erithacus rubecula": 5}, 6))
+
+
 class SecretPath(Server):
     base_path = "/k3j9x2q8/hidden/"
 

@@ -299,7 +299,11 @@ def cmd_run(args, data):
     eng = E.Engine(data, cfg)
     cap = audio.Capture(eng.ring.push, cfg.get("audio_backend", "auto"), cfg.get("device"), eng.status, log)
     stop = threading.Event()
+    pauser = E.Pauser(eng, cap, cfg, data)
+    if pauser.paused_until != 0:
+        cap.paused.set()                       # stayed stopped across the restart: don't open the mic
     cap.start()
+    threading.Thread(target=pauser.run, args=(stop,), name="pause", daemon=True).start()
     threading.Thread(target=eng.run, name="engine", daemon=True).start()
     threading.Thread(target=E.housekeeping, args=(eng, stop), name="housekeeping", daemon=True).start()
     if cfg.get("fetch_photos", True):

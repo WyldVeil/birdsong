@@ -72,8 +72,13 @@ DEFAULTS = {
     #   2 standard  single-window detections get the shifted re-check (the default)
     #   3 guarded   standard + human-noise guard (default for human_guard_species)
     #   4 strict    guarded + single-window detections wait for admin review
-    #   5 review    every detection waits for admin approval
+    #   5 very strict  guarded + fewer than very_strict_min_windows windows waits for review
+    #   6 review       every detection waits for admin approval
     "species_levels": {},
+    "very_strict_min_windows": 3,  # level 5: fewer windows than this waits for review
+    # Held-back detections (the admin review list) are deleted after this many
+    # days unless starred; 0 = keep them. Changeable in the admin panel.
+    "review_keep_days": 4,
     "trusted_species": [],        # shortcut list for level 1; empty by default
 
     # --- storage

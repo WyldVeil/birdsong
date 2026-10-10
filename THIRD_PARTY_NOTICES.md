@@ -44,6 +44,9 @@ photo and shown on the bird's page with a link to the file.
   mpg123 for MP3. These are unmodified shared libraries from the soundfile
   wheel on PyPI; their sources are available from libsndfile.github.io,
   lame.sourceforge.io and mpg123.de.
+- Pillow (MIT-CMU / HPND), which bundles libjpeg-turbo, libpng, zlib and
+  other image libraries under their own permissive licences (listed in its
+  dist-info)
 - CPython 3.12 (PSF License), the relocatable python-build-standalone builds
   (https://github.com/astral-sh/python-build-standalone), with each bundled
   package's own licence files in `runtime/` (`site-packages/*.dist-info/`).

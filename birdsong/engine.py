@@ -101,7 +101,8 @@ CREATE TABLE IF NOT EXISTS species (
     slug TEXT NOT NULL, photo INTEGER NOT NULL DEFAULT 0,
     photo_credit TEXT NOT NULL DEFAULT '', photo_license TEXT NOT NULL DEFAULT '',
     photo_page TEXT NOT NULL DEFAULT '', wiki_url TEXT NOT NULL DEFAULT '',
-    extract TEXT NOT NULL DEFAULT '', checked REAL NOT NULL DEFAULT 0
+    extract TEXT NOT NULL DEFAULT '', checked REAL NOT NULL DEFAULT 0,
+    focal_x REAL, focal_y REAL            -- where the bird is in its photo (%), for cropping
 );
 CREATE TABLE IF NOT EXISTS detections (
     id INTEGER PRIMARY KEY, sci TEXT NOT NULL, start REAL NOT NULL, end REAL NOT NULL,
@@ -140,11 +141,28 @@ def connect(db_file: str) -> sqlite3.Connection:
 
 def migrate(con: sqlite3.Connection) -> None:
     """Add columns introduced after a database was created (upgrades)."""
+    sp_have = {r[1] for r in con.execute("PRAGMA table_info(species)")}
+    for col in ("focal_x", "focal_y"):
+        if col not in sp_have:
+            con.execute(f"ALTER TABLE species ADD COLUMN {col} REAL")
     have = {r[1] for r in con.execute("PRAGMA table_info(detections)")}
     for col, decl in (("verified", "TEXT NOT NULL DEFAULT ''"), ("verify_score", "REAL")):
         if col not in have:
             con.execute(f"ALTER TABLE detections ADD COLUMN {col} {decl}")
     con.commit()
+
+
+def norm_levels(cfg: dict) -> dict:
+    """species_levels as {sci: 1..6}. Configs saved before "very strict" was
+    added (no species_levels_scale) used 5 for "review all": map it to 6."""
+    old = cfg.get("species_levels_scale") != 6
+    out = {}
+    for k, v in (cfg.get("species_levels") or {}).items():
+        if isinstance(v, int) and not isinstance(v, bool):
+            v = 6 if (old and v == 5) else v
+            if 1 <= v <= 6:
+                out[str(k)] = v
+    return out
 
 
 def slugify(sci: str) -> str:
@@ -521,7 +539,9 @@ class Engine:
             verified = "human"
             log.info(f"human-noise guard held back {self.net.common[self.sci_index[ev.sci]]} "
                      f"(human non-vocal {hnv:.2f}{'; a human class was the top guess' if human_top else ''})")
-        elif self._level(ev.sci) == 5 or (self._level(ev.sci) == 4 and ev.hits < 2):
+        elif (self._level(ev.sci) == 6
+              or (self._level(ev.sci) == 5 and ev.hits < int(self.cfg.get("very_strict_min_windows", 3)))
+              or (self._level(ev.sci) == 4 and ev.hits < 2)):
             verified = "review"                   # the admin asked to approve these by hand
         elif hnv is not None and ev.hits >= 2:
             verified = "multi"
@@ -537,9 +557,9 @@ class Engine:
             self.clip_q.put((ev.id, ev.start, audio))
 
     def _level(self, sci: str) -> int:
-        """1 trusted .. 5 review-all; see species_levels in config.py."""
-        lv = (self.cfg.get("species_levels") or {}).get(sci)
-        if isinstance(lv, int) and 1 <= lv <= 5:
+        """1 trusted .. 6 review-all; see species_levels in config.py."""
+        lv = norm_levels(self.cfg).get(sci)
+        if lv is not None:
             return lv
         if sci in set(self.cfg.get("human_guard_species") or ()):
             return 3                      # never trusted by default: sniffs can imitate it
@@ -616,7 +636,9 @@ class Engine:
     def snapshot(self, since: int = 0) -> dict:
         seq, cols = self.live.since(since)
         st = self.status
+        pauser = getattr(self, "pauser", None)
         return {
+            "paused": bool(pauser and pauser.paused_until != 0),
             "ts": st.get("ts", 0), "started": st["started"], "level_db": st.get("level_db"),
             "peak": st.get("peak"), "clipped_at": st.get("clipped_at"), "mic_error": st.get("mic_error"),
             "low_disk": self.low_disk, "seq": seq, "bands": LiveSpectrum.BANDS, "col_rate": 20, "cols": cols,
@@ -624,6 +646,93 @@ class Engine:
                         for e in list(self.events.values())
                         if e.inserted and e.tier < 3 and (e.hits >= 2 or self._trusted(e.sci)) and not self._guarded(e.sci)],
         }
+
+
+class Pauser:
+    """Admin "Stop Birdsong": releases the microphone (nothing is captured or
+    analysed) and, on Linux with PulseAudio/PipeWire, mutes the mic source,
+    until resumed or until the chosen time. Kept in the kv table, so a restart
+    stays stopped."""
+
+    def __init__(self, engine, cap, cfg: dict, data: str):
+        self.engine, self.cap, self.cfg = engine, cap, cfg
+        self.db = connect(os.path.join(data, "birds.db"))
+        self.lock = threading.Lock()
+        try:
+            self.paused_until = float(self._kv("paused_until") or 0)   # 0 running, -1 until resumed
+        except ValueError:
+            self.paused_until = 0.0
+        engine.pauser = self
+
+    def _kv(self, k, v=None):
+        if v is None:
+            row = self.db.execute("SELECT v FROM kv WHERE k=?", (k,)).fetchone()
+            return row[0] if row else None
+        self.db.execute("INSERT OR REPLACE INTO kv(k, v) VALUES (?,?)", (k, str(v)))
+        self.db.commit()
+
+    def status(self) -> dict:
+        u = self.paused_until
+        return {"paused": u != 0, "until": u if u > 0 else None, "indefinite": u == -1}
+
+    def _source(self):
+        dev = self.cfg.get("device")
+        if dev:
+            return str(dev)
+        r = subprocess.run(["pactl", "get-default-source"], capture_output=True, text=True, timeout=5)
+        return r.stdout.strip() or None
+
+    def _mute(self, on: bool):
+        """Best effort, PulseAudio/PipeWire only; restores only what it changed."""
+        import shutil as _sh
+        if getattr(self.cap, "backend", "") != "pulse" or not _sh.which("pactl"):
+            return
+        try:
+            src = self._source()
+            if not src:
+                return
+            if on:
+                r = subprocess.run(["pactl", "get-source-mute", src], capture_output=True, text=True, timeout=5)
+                if "yes" not in r.stdout:
+                    subprocess.run(["pactl", "set-source-mute", src, "1"], timeout=5)
+                    self._kv("paused_muted", src)
+            else:
+                src = self._kv("paused_muted")
+                if src:
+                    subprocess.run(["pactl", "set-source-mute", src, "0"], timeout=5)
+                    self._kv("paused_muted", "")
+        except (OSError, subprocess.SubprocessError) as e:
+            log.warning(f"couldn't {'mute' if on else 'unmute'} the microphone: {e}")
+
+    def pause(self, minutes: float) -> dict:
+        with self.lock:
+            self.paused_until = -1.0 if not minutes or minutes <= 0 else time.time() + float(minutes) * 60
+            self._kv("paused_until", self.paused_until)
+            self.cap.paused.set()
+            self._mute(True)
+        log.info("Birdsong stopped " + ("until resumed" if self.paused_until == -1 else
+                 f"until {time.strftime('%H:%M %d %b', time.localtime(self.paused_until))}"))
+        return {"ok": True, **self.status()}
+
+    def resume(self, why: str = "resumed") -> dict:
+        with self.lock:
+            self.paused_until = 0.0
+            self._kv("paused_until", 0)
+            self._mute(False)
+            self.cap.paused.clear()
+        log.info(f"Birdsong {why}")
+        return {"ok": True, **self.status()}
+
+    def run(self, stop: threading.Event):
+        if self.paused_until > 0 and time.time() >= self.paused_until:
+            self.resume("resumed (its stop time passed while it was off)")
+        elif self.paused_until != 0:
+            self.cap.paused.set()
+            self._mute(True)
+            log.info("Birdsong is still stopped (from before the restart)")
+        while not stop.wait(2):
+            if self.paused_until > 0 and time.time() >= self.paused_until:
+                self.resume("resumed automatically at the chosen time")
 
 
 def write_clip(data: str, db, det_id: int, start: float, audio: np.ndarray, low_disk: bool = False):
@@ -712,18 +821,49 @@ def retention_pass(data: str, cfg: dict, db, now: float = None) -> dict:
     return removed
 
 
+def purge_review(data_dir: str, cfg: dict, db, now: float = None) -> int:
+    """Delete held-back detections (and their clips) once they're older than
+    review_keep_days, unless starred. Those are the admin review list: never
+    public, so removing them changes no public stats."""
+    days = float(cfg.get("review_keep_days", 4) or 0)
+    if days <= 0:
+        return 0
+    cut = (now or time.time()) - days * 86400
+    rows = db.execute(
+        "SELECT id, clip, spectro FROM detections WHERE saved=0 AND start<? AND open=0 AND "
+        "(verified IN ('failed','human','review') OR (tier=3 AND review='pending') OR hidden=1)", (cut,)).fetchall()
+    for det_id, clip, spec in rows:
+        for rel in (clip, spec):
+            if rel:
+                try:
+                    os.unlink(os.path.join(data_dir, rel))
+                except OSError:
+                    pass
+        db.execute("DELETE FROM detections WHERE id=?", (det_id,))
+        db.execute("DELETE FROM birdweather WHERE det_id=?", (det_id,))
+    db.commit()
+    return len(rows)
+
+
 def housekeeping(engine: Engine, stop: threading.Event):
     db = connect(os.path.join(engine.data, "birds.db"))
+    last_purge = 0.0
     while not stop.is_set():
         try:
             engine.low_disk = shutil.disk_usage(engine.data).free < float(engine.cfg["min_free_gb"]) * 1024 ** 3
+            if time.time() - last_purge >= 4 * 3600:              # the review purge runs every 4 h
+                last_purge = time.time()
+                n = purge_review(engine.data, engine.cfg, db)
+                if n:
+                    log.info(f"review list: auto-cleared {n} held-back detections older than "
+                             f"{engine.cfg.get('review_keep_days')} days")
             r = retention_pass(engine.data, engine.cfg, db)
             if r["clips"] or r["spectro"]:
                 log.info(f"retention: removed {r['clips']} clips, {r['spectro']} spectrograms "
                          f"({r['bytes'] / 1e6:.1f} MB)")
         except Exception as e:
             log.exception(f"housekeeping failed: {e}")
-        stop.wait(900)
+        stop.wait(3600)            # hourly
 
 
 # ---------------------------------------------------------------- photos
@@ -771,13 +911,56 @@ def fetch_species_info(data: str, sci: str, slug: str) -> dict:
         os.replace(os.path.join(pdir, name + ".tmp"), os.path.join(pdir, name))
         time.sleep(1)
     out["photo"] = 1
+    out["focal"] = photo_focal(os.path.join(pdir, f"{slug}.jpg"))
     return out
+
+
+def photo_focal(path: str):
+    """Where the bird is in its photo, as (x%, y%), for CSS object-position.
+    The photo's edges are usually background, so the bird is the region least
+    like the border colours. Horizontally: the middle of that region.
+    Vertically: its upper fifth, since heads are on top and a wide crop (the
+    bird page) must keep the head. (Sharpness was tried first and failed:
+    in-focus grass outscored the bird.) None if Pillow isn't available."""
+    try:
+        from PIL import Image
+        im = Image.open(path).convert("RGB")
+    except Exception:
+        return None
+    im.thumbnail((200, 200))
+    a = np.asarray(im, dtype=np.float32) / 255
+    h, w, _ = a.shape
+    b = max(4, min(h, w) // 12)
+    border = np.concatenate([a[:b].reshape(-1, 3), a[-b:].reshape(-1, 3),
+                             a[:, :b].reshape(-1, 3), a[:, -b:].reshape(-1, 3)])
+    ref = border[np.random.default_rng(0).choice(len(border), min(400, len(border)), replace=False)]
+    d = np.min(np.linalg.norm(a.reshape(-1, 1, 3) - ref[None, :, :], axis=2), axis=1).reshape(h, w)
+    k = max(3, w // 20)
+    c = np.cumsum(np.cumsum(np.pad(d, ((1, 0), (1, 0))), 0), 1)
+    s = (c[k:, k:] - c[:-k, k:] - c[k:, :-k] + c[:-k, :-k]) / (k * k)
+    wgt = np.clip(s - np.percentile(s, 80), 0, None)
+    if wgt.sum() <= 0:
+        return 50.0, 40.0
+    ys, xs = np.mgrid[0:wgt.shape[0], 0:wgt.shape[1]]
+    fx = (xs * wgt).sum() / wgt.sum() + k / 2
+    rows = np.cumsum(wgt.sum(axis=1)) / wgt.sum()
+    fy = float(np.searchsorted(rows, 0.2)) + k / 2
+    return round(min(95, max(5, 100 * fx / w)), 1), round(min(95, max(5, 100 * fy / h)), 1)
 
 
 def photo_fetcher(data: str, stop: threading.Event):
     """Fill in photos and descriptions, heard species first, one at a time
     (Wikimedia API etiquette: descriptive User-Agent, serial, paused)."""
     db = connect(os.path.join(data, "birds.db"))
+    # Photos fetched before focal points existed: work each out, then a tiny
+    # write per photo (never hold the write lock while computing).
+    for sci, slug in db.execute("SELECT sci, slug FROM species WHERE photo=1 AND focal_x IS NULL").fetchall():
+        if stop.is_set():
+            return
+        f = photo_focal(os.path.join(data, "photos", f"{slug}.jpg"))
+        if f:
+            db.execute("UPDATE species SET focal_x=?, focal_y=? WHERE sci=?", (f[0], f[1], sci))
+            db.commit()
     while not stop.is_set():
         row = db.execute(
             "SELECT s.sci, s.slug FROM species s WHERE s.photo=0 AND s.checked < ? ORDER BY "
@@ -789,10 +972,11 @@ def photo_fetcher(data: str, stop: threading.Event):
         sci, slug = row
         try:
             info = fetch_species_info(data, sci, slug)
+            fx, fy = info.get("focal") or (None, None)
             db.execute("UPDATE species SET photo=?, photo_credit=?, photo_license=?, photo_page=?, wiki_url=?, "
-                       "extract=?, checked=? WHERE sci=?",
+                       "extract=?, checked=?, focal_x=?, focal_y=? WHERE sci=?",
                        (info["photo"], info["photo_credit"], info["photo_license"], info["photo_page"],
-                        info["wiki_url"], info["extract"], time.time(), sci))
+                        info["wiki_url"], info["extract"], time.time(), fx, fy, sci))
         except Exception as e:
             db.execute("UPDATE species SET checked=? WHERE sci=?", (time.time(), sci))
             log.debug(f"photo for {sci} failed: {e}")

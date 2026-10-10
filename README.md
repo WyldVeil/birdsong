@@ -43,8 +43,16 @@ double-click; no Python install, no admin rights, no account, no cloud.
   catches hits on background noise, a human-noise guard stops sniffs becoming
   "owls", and a per-species slider lets you trust your garden regulars or
   review anything doubtful (see below).
+- **Stop Birdsong for privacy.** One click in the admin panel (from your phone
+  too) releases the microphone for 30 minutes, an hour, a time you choose or
+  until you resume it. On Linux desktops it also mutes the mic. The page shows
+  "Paused" meanwhile.
 - **Looks after itself.** Clips are deleted after 30 days unless starred, total
-  clip space is capped, and recording pauses if the disk gets low.
+  clip space is capped, recording pauses if the disk gets low, and held-back
+  detections clear themselves from the review list after 4 days (you choose).
+- **Photos framed on the bird.** Each photo's focal point is worked out once,
+  so cards and the bird page crop around the bird instead of cutting off its
+  head.
 - **Optional BirdWeather sharing.** Your detections can appear on
   [BirdWeather](https://app.birdweather.com/)'s public world map of listening
   stations.
@@ -234,6 +242,7 @@ So each species has a **detection level** that you can change with a slider:
 | **Standard** | The normal checks (layer 3). The default for almost every species. |
 | **Guarded** | Standard plus the human-noise guard (layer 4). The default for owls and Common Scoter. |
 | **Strict** | Guarded, and anything heard in only one window waits for your review. |
+| **Very strict** | Guarded, and anything heard in fewer than 3 windows in a row waits for your review. For birds that short household noises (typing, clicks) keep imitating, since a real bird calling or singing is heard for longer. |
 | **Review all** | Every detection of this species waits for your ✓. |
 
 How to use it:
@@ -250,6 +259,11 @@ How to use it:
   hear.
 - **Owls and other noise-prone species warn you** if you lower them below
   Guarded, since sniffs and breathing can then get through.
+
+The review list clears itself: anything still held back after
+`review_keep_days` (4 by default, set in the admin panel; 0 = never) is deleted
+along with its clip, unless you starred it. Approved and public detections are
+never touched.
 
 ## Using it
 
@@ -321,6 +335,15 @@ Any microphone works, though. A cheap USB mic will catch nearby birds.
   clipped in the last hour.
 - **Bats** aren't detected. They call in ultrasound, which needs a special
   microphone and a different model.
+
+### Stopping it for a while
+
+The admin panel's **Birdsong** card has **Stop for 30 min**, **Stop for 1 h**,
+**Stop until I resume** and a custom number of hours. While stopped, the
+microphone is released (nothing is listened to, analysed or saved) and, with
+PulseAudio or PipeWire on Linux, the system mic is muted too; on resume it is
+unmuted only if Birdsong muted it. It resumes by itself at the chosen time, and
+stays stopped across a restart.
 
 ### Share on BirdWeather (optional)
 
@@ -424,7 +447,9 @@ the file by hand (stop Birdsong first):
 | `human_guard_threshold` | 0.25 | BirdNET "Human non-vocal" score that counts as human noise |
 | `human_guard_top_class` | true | Also count it as human noise when a Human class is BirdNET's top guess |
 | `step_s` | 1.0 | Seconds between analysis windows (1.0 = 2 s overlap) |
-| `species_levels` | *(empty)* | Per-species levels set with the admin slider: 1 Trusted … 5 Review all |
+| `species_levels` | *(empty)* | Per-species levels set with the admin slider: 1 Trusted … 5 Very strict, 6 Review all |
+| `very_strict_min_windows` | 3 | Windows in a row a Very strict species needs before it appears without review |
+| `review_keep_days` | 4 | Delete held-back (unapproved) detections after this many days, unless starred; 0 = never |
 | `trusted_species` | *(empty)* | Shortcut list of species that start at Trusted |
 | `birdweather_token` | *(empty = off)* | BirdWeather station token (set with `birdweather`) |
 | `birdweather_audio` | false | Also send a FLAC clip with each detection (never clips with speech) |
@@ -436,6 +461,8 @@ the file by hand (stop Birdsong first):
 - **Everything stays on your computer** in the `data/` folder: settings, the
   detections database, recordings, photos and the model.
 - **Visitors can't hear recordings.** Only the admin can play them.
+- **You can stop listening at any time** from the admin panel (see "Stopping
+  it for a while").
 - **Your location** is used only to pick likely species, rounded to ~1 km, and
   never sent to the page.
 - **The only connections Birdsong makes:**

@@ -103,6 +103,7 @@ class Capture(threading.Thread):
         self.status = status if status is not None else {}
         self.log = log
         self.stop_event = threading.Event()
+        self.paused = threading.Event()          # set = microphone released, nothing captured
         self.proc = None
 
     def _warn(self, msg):
@@ -113,6 +114,10 @@ class Capture(threading.Thread):
     def run(self):
         backoff = 2
         while not self.stop_event.is_set():
+            if self.paused.is_set():
+                self.status.pop("mic_error", None)
+                self.stop_event.wait(0.5)
+                continue
             started = time.time()
             try:
                 if self.backend == "sounddevice":
@@ -123,6 +128,8 @@ class Capture(threading.Thread):
                 self._warn(f"microphone ({self.backend}): {e}")
             if self.stop_event.is_set():
                 break
+            if self.paused.is_set():
+                continue
             if time.time() - started > 30:
                 backoff = 2
             self.stop_event.wait(backoff)
@@ -154,7 +161,7 @@ class Capture(threading.Thread):
 
         with sd.InputStream(device=dev, samplerate=rate, channels=1, dtype="int16",
                             blocksize=rate // 10, callback=cb):
-            while not self.stop_event.wait(1.0):
+            while not self.stop_event.wait(0.5) and not self.paused.is_set():
                 pass
 
     # --- parecord / arecord
@@ -173,7 +180,7 @@ class Capture(threading.Thread):
         self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         got = 0
         try:
-            while not self.stop_event.is_set():
+            while not self.stop_event.is_set() and not self.paused.is_set():
                 raw = self.proc.stdout.read(SR // 10 * 2)
                 if not raw:
                     break
@@ -188,9 +195,10 @@ class Capture(threading.Thread):
             try:
                 self.proc.kill()
                 err = self.proc.stderr.read()[-300:]
+                self.proc.wait(timeout=5)
             except Exception:
                 pass
-        if not self.stop_event.is_set():
+        if not self.stop_event.is_set() and not self.paused.is_set():
             raise RuntimeError(err.decode(errors="replace").strip() or "recording stopped")
 
     def stop(self):

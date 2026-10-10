@@ -87,6 +87,86 @@ class Retention(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class ReviewPurge(unittest.TestCase):
+    def test_old_held_back_items_cleared(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            con = E.connect(os.path.join(tmp, "birds.db"))
+            now = time.time()
+            os.makedirs(os.path.join(tmp, "clips"))
+
+            def add(i, age, verified="", saved=0, tier=1, review="", hidden=0):
+                rel = f"clips/{i}.mp3"
+                open(os.path.join(tmp, rel), "wb").close()
+                con.execute("INSERT INTO detections(id, sci, start, end, day, hour, conf, tier, saved, clip, open, "
+                            "verified, review, hidden) VALUES (?,?,?,?,?,?,?,?,?,?,0,?,?,?)",
+                            (i, "a b", now - age * 86400, now, "d", 0, .9, tier, saved, rel, verified, review, hidden))
+            add(1, 5, "review")
+            add(2, 5, "failed", saved=1)                          # starred: kept
+            add(3, 2, "human")                                    # too new
+            add(4, 5, "ok")                                       # public: never purged
+            add(5, 5, "pending", tier=3, review="pending")        # unconfirmed rarity
+            add(6, 5, "multi", hidden=1)
+            con.commit()
+            self.assertEqual(E.purge_review(tmp, dict(C.DEFAULTS), con, now), 3)
+            left = {i for (i,) in con.execute("SELECT id FROM detections")}
+            self.assertEqual(left, {2, 3, 4})
+            self.assertFalse(os.path.exists(os.path.join(tmp, "clips/1.mp3")))
+            self.assertEqual(E.purge_review(tmp, dict(C.DEFAULTS, review_keep_days=0), con, now + 1e7), 0)
+            con.close()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class Pause(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.eng = mock.Mock(spec=[])
+        self.cap = mock.Mock(backend="sounddevice")
+        self.cap.paused = __import__("threading").Event()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_stop_resume_and_persist(self):
+        p = E.Pauser(self.eng, self.cap, dict(C.DEFAULTS), self.tmp)
+        self.assertIs(self.eng.pauser, p)
+        self.assertFalse(p.status()["paused"])
+        st = p.pause(30)
+        self.assertTrue(st["paused"] and self.cap.paused.is_set())
+        self.assertAlmostEqual(st["until"], time.time() + 1800, delta=5)
+        p2 = E.Pauser(mock.Mock(spec=[]), self.cap, dict(C.DEFAULTS), self.tmp)     # after a restart
+        self.assertTrue(p2.status()["paused"])
+        p.resume()
+        self.assertFalse(self.cap.paused.is_set())
+        p.pause(0)
+        self.assertTrue(p.status()["indefinite"])
+        p.paused_until = time.time() - 1                      # the chosen time has passed
+        stop = __import__("threading").Event()
+        stop.set()
+        p.run(stop)
+        self.assertFalse(p.status()["paused"] or self.cap.paused.is_set())
+
+
+class Focal(unittest.TestCase):
+    def test_finds_the_bird(self):
+        try:
+            from PIL import Image
+        except ImportError:
+            self.skipTest("Pillow not installed")
+        tmp = tempfile.mkdtemp()
+        try:
+            a = np.full((300, 400, 3), (90, 140, 70), dtype=np.uint8)    # green background
+            a[40:160, 260:360] = (30, 30, 35)                             # a dark bird, top right
+            path = os.path.join(tmp, "b.jpg")
+            Image.fromarray(a).save(path)
+            fx, fy = E.photo_focal(path)
+            self.assertTrue(65 <= fx <= 90, fx)
+            self.assertTrue(10 <= fy <= 40, fy)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class Events(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -205,6 +285,23 @@ class Events(unittest.TestCase):
         e.cfg["human_guard_species"] = ["Erithacus rubecula"]
         e.cfg["trusted_species"] = ["Erithacus rubecula"]
         self.assertEqual(e._level("Erithacus rubecula"), 3)      # guarded is never trusted by default
+
+    def test_very_strict_needs_three_windows(self):
+        e = self.e
+        t = e.ring.time_of(e.ring.total) - 8
+        e.net.predict = lambda x, sens=1.0: np.array([0.9, 0.0], dtype=np.float32)
+        e.cfg["species_levels"], e.cfg["species_levels_scale"] = {"Erithacus rubecula": 5}, 6
+        self.assertEqual(e._level("Erithacus rubecula"), 5)
+        e._hit(0, 0.9, t - 4, t - 1, 0)                           # two windows: a keyboard burst
+        e._hit(0, 0.9, t - 3, t, 0)
+        e._close(e.events["Erithacus rubecula"])
+        self.assertEqual(self.verdict(1), "review")
+        for k in range(3):                                        # three in a row: a real bird
+            e._hit(0, 0.9, t - 5 + k, t - 2 + k, 0)
+        e._close(e.events["Erithacus rubecula"])
+        self.assertEqual(self.verdict(2), "multi")
+        e.cfg["species_levels_scale"] = None                      # a config from before v1.5: 5 meant review all
+        self.assertEqual(e._level("Erithacus rubecula"), 6)
 
     def test_vagrant_rules(self):
         e, t = self.e, time.time() - 100

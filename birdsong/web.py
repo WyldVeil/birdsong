@@ -72,7 +72,9 @@ class App:
                 return c["rows"]
             rows = {r["sci"]: {"sci": r["sci"], "common": r["common"], "tier": r["tier"], "slug": r["slug"],
                                "photo": bool(r["photo"]), "credit": r["photo_credit"], "license": r["photo_license"],
-                               "photo_page": r["photo_page"], "wiki": r["wiki_url"], "extract": r["extract"]}
+                               "photo_page": r["photo_page"], "wiki": r["wiki_url"], "extract": r["extract"],
+                               "fx": r["focal_x"] if "focal_x" in r.keys() else None,
+                               "fy": r["focal_y"] if "focal_y" in r.keys() else None}
                     for r in con.execute("SELECT * FROM species")}
             c.update(at=time.time(), n=n, rows=rows)
             return rows
@@ -108,7 +110,8 @@ class App:
 
 def _brief(sp, sci):
     s = sp.get(sci) or {"sci": sci, "common": sci, "tier": 3, "slug": "", "photo": False}
-    return {"sci": s["sci"], "common": s["common"], "tier": s["tier"], "slug": s["slug"], "photo": s["photo"]}
+    return {"sci": s["sci"], "common": s["common"], "tier": s["tier"], "slug": s["slug"], "photo": s["photo"],
+            "fx": s.get("fx"), "fy": s.get("fy")}
 
 
 def _det(r, admin):
@@ -245,13 +248,15 @@ def api_live(app: App, since: int, admin: bool) -> dict:
     import base64
     snap = app.live.snapshot(since) if app.live else {}
     now = time.time()
-    online = bool(snap) and now - float(snap.get("ts") or 0) < ENGINE_STALE and not snap.get("mic_error")
+    paused = bool(snap.get("paused"))
+    online = bool(snap) and now - float(snap.get("ts") or 0) < ENGINE_STALE and not snap.get("mic_error") and not paused
     out = {"now": now, "online": online, "level_db": snap.get("level_db"), "seq": snap.get("seq", 0),
            "bands": snap.get("bands", 64), "col_rate": snap.get("col_rate", 20),
            "cols": base64.b64encode(snap.get("cols") or b"").decode() if online else "",
            "started": bool(snap), "hearing": [], "recent": [], "today": {"detections": 0, "species": 0, "hours": 0},
            "rev": "0", "mic_error": bool(snap.get("mic_error")),
-           "birdweather": bool(app.cfg.get("birdweather_token"))}     # a flag only, never the token
+           "birdweather": bool(app.cfg.get("birdweather_token")),     # a flag only, never the token
+           "paused": paused}
     if admin:
         out.update(peak=snap.get("peak"), clipped_at=snap.get("clipped_at"), mic_error_text=snap.get("mic_error"),
                    low_disk=snap.get("low_disk"))
@@ -401,6 +406,9 @@ def api_admin_status(app: App) -> dict:
                             "COALESCE(SUM(hidden),0) FROM detections").fetchone()
             out.update(clips=r[0], clip_bytes=r[1], saved=r[2], pending=r[3], hidden=r[4])
             out["rules"] = api_rules(app)
+            pauser = getattr(app.live, "pauser", None)
+            out["pause"] = pauser.status() if pauser else None
+            out["review_keep_days"] = app.cfg.get("review_keep_days", 4)
             out["unverified"] = con.execute("SELECT COUNT(*) FROM detections WHERE verified IN ('failed','human','review') "
                                             "AND hidden=0").fetchone()[0]
             bw = dict(con.execute("SELECT status, COUNT(*) FROM birdweather GROUP BY status").fetchall())
@@ -411,7 +419,20 @@ def api_admin_status(app: App) -> dict:
     return out
 
 
-LEVELS = {1: "Trusted", 2: "Standard", 3: "Guarded", 4: "Strict", 5: "Review all"}
+LEVELS = {1: "Trusted", 2: "Standard", 3: "Guarded", 4: "Strict", 5: "Very strict", 6: "Review all"}
+
+
+def _norm_levels(cfg: dict) -> dict:
+    """{sci: 1..6}. Configs saved before "very strict" existed (no
+    species_levels_scale) used 5 for review-all: read that as 6."""
+    old = cfg.get("species_levels_scale") != 6
+    out = {}
+    for k, v in (cfg.get("species_levels") or {}).items():
+        if isinstance(v, int) and not isinstance(v, bool):
+            v = 6 if (old and v == 5) else v
+            if 1 <= v <= 6:
+                out[str(k)] = v
+    return out
 
 
 def _default_level(cfg: dict, sci: str) -> int:
@@ -423,14 +444,14 @@ def _default_level(cfg: dict, sci: str) -> int:
 
 
 def _level(cfg: dict, sci: str) -> int:
-    lv = (cfg.get("species_levels") or {}).get(sci)
-    return lv if isinstance(lv, int) and 1 <= lv <= 5 else _default_level(cfg, sci)
+    lv = _norm_levels(cfg).get(sci)
+    return lv if lv else _default_level(cfg, sci)
 
 
 def api_rules(app: App) -> dict:
     """Species whose level isn't Standard, or that the admin has set by hand."""
     cfg = app.cfg
-    levels = cfg.get("species_levels") or {}
+    levels = _norm_levels(cfg)
     scis = set(cfg.get("human_guard_species") or []) | set(cfg.get("trusted_species") or []) | set(levels)
     con = app.connect()
     sp = app.species(con) if con is not None else {}
@@ -458,7 +479,8 @@ def set_rule(app: App, sci: str, level):
     config dict, so new detections use it at once; it's also saved to disk."""
     if api_rule(app, sci) is None:
         return None
-    levels = dict(app.cfg.get("species_levels") or {})
+    levels = _norm_levels(app.cfg)
+    app.cfg["species_levels_scale"] = 6
     if level is None or level == _default_level(app.cfg, sci):
         levels.pop(sci, None)
     else:
@@ -785,11 +807,37 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, {"ok": True}, extra=[self.cookie("", 0)])
         if not self.is_admin():
             return False
+        if api == "admin/pause":
+            pauser = getattr(app.live, "pauser", None)
+            if pauser is None:
+                return self.send_json(503, {"ok": False, "error": "Not available here (demo mode?)."})
+            body = self.read_json() or {}
+            if body.get("action") == "resume":
+                return self.send_json(200, {"ok": True, "pause": pauser.resume()})
+            try:
+                minutes = float(body.get("minutes") or 0)                # 0 = until resumed
+            except (TypeError, ValueError):
+                minutes = -1
+            if not 0 <= minutes <= 60 * 24 * 30:
+                return self.send_json(400, {"ok": False, "error": "Choose up to 30 days, or until resumed."})
+            return self.send_json(200, {"ok": True, "pause": pauser.pause(minutes)})
+        if api == "admin/settings":
+            body = self.read_json() or {}
+            if "review_keep_days" in body:
+                try:
+                    days = float(body["review_keep_days"])
+                except (TypeError, ValueError):
+                    days = -1
+                if not 0 <= days <= 365:
+                    return self.send_json(400, {"ok": False, "error": "Days must be 0 (never) to 365."})
+                app.cfg["review_keep_days"] = int(days) if days == int(days) else days
+                C.save(app.cfg, app.data)
+            return self.send_json(200, {"ok": True, "review_keep_days": app.cfg.get("review_keep_days", 4)})
         if api == "admin/rule":
             body = self.read_json() or {}
             lv = body.get("level")
-            if lv is not None and not (isinstance(lv, int) and not isinstance(lv, bool) and 1 <= lv <= 5):
-                return self.send_json(400, {"ok": False, "error": "level must be 1-5 or null"})
+            if lv is not None and not (isinstance(lv, int) and not isinstance(lv, bool) and 1 <= lv <= 6):
+                return self.send_json(400, {"ok": False, "error": "level must be 1-6 or null"})
             res = set_rule(app, str(body.get("sci") or "")[:100], lv)
             if res is None:
                 return self.send_json(400, {"ok": False, "error": "unknown species"})
