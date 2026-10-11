@@ -298,7 +298,7 @@ def api_live(app: App, since: int, admin: bool) -> dict:
                    low_disk=snap.get("low_disk"))
         rec = _recorder(app)
         out["recording"] = bool(rec and rec.status()["recording"])
-        out["room_audio"] = _listen(app) is not None
+        out["listen_and_record"] = _listen(app) is not None
     con = app.connect()
     if con is None:
         return out
@@ -510,7 +510,7 @@ def api_admin_status(app: App) -> dict:
             out["review_keep_days"] = app.cfg.get("review_keep_days", 4)
             listen = _listen(app)
             out["live_listeners"] = listen.count() if listen else None
-            out["room_audio"] = listen is not None
+            out["listen_and_record"] = listen is not None
             out["unverified"] = con.execute("SELECT COUNT(*) FROM detections WHERE verified IN ('failed','human','review') "
                                             "AND hidden=0").fetchone()[0]
             bw = dict(con.execute("SELECT status, COUNT(*) FROM birdweather GROUP BY status").fetchall())

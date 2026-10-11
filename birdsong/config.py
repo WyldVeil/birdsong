@@ -88,9 +88,9 @@ DEFAULTS = {
     "min_free_gb": 5,
     "fetch_photos": True,
 
-    # --- Listen live and room recordings (admin only; MP3 via the bundled ffmpeg).
-    # Set room_audio to false to remove both from the page entirely.
-    "room_audio": True,
+    # --- Listen live and recordings (admin only; MP3 via the bundled ffmpeg).
+    # Set listen_and_record to false to remove both from the page entirely.
+    "listen_and_record": True,
     "live_kbps": 128,             # listen-live stream
     "live_max_listeners": 3,
     "rec_kbps": 256,              # recordings: about 115 MB per hour

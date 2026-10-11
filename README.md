@@ -341,7 +341,7 @@ Any microphone works, though. A cheap USB mic will catch nearby birds.
 - **Bats** aren't detected. They call in ultrasound, which needs a special
   microphone and a different model.
 
-### Listen live and room recordings
+### Listen live and recordings
 
 Both are for the admin only. To anyone else the stream and the recordings
 don't exist (a plain "not found"), and the buttons aren't shown.
@@ -350,13 +350,13 @@ don't exist (a plain "not found"), and the buttons aren't shown.
   streams the microphone as MP3 (128 kbps), lightly levelled so a quiet garden
   is audible on earphones. Nothing is encoded unless someone is listening. At
   most 3 listeners at once; every start and stop is logged with its IP address.
-- **Room recordings:** in the admin panel, **Start recording** and choose when
+- **Recordings:** in the admin panel, **Start recording** and choose when
   it stops (1 to 24 hours; it always stops by itself). Files are 256 kbps MP3
   (about 115 MB an hour) in `data/recordings/`; play, download or delete them
   there. Recording won't start below 10 GB free and stops at 5 GB. If Birdsong
   is closed mid-recording it carries on in a new file when it starts again.
 - **Stopping Birdsong** ends both straight away.
-- **Turn both off** by setting `"room_audio": false` in `data/config.json`.
+- **Turn both off** by setting `"listen_and_record": false` in `data/config.json`.
 - **Be considerate:** a microphone in a home hears conversations too. Tell the
   people you live with, and check the law where you live before recording
   other people.
@@ -479,7 +479,7 @@ the file by hand (stop Birdsong first):
 | `species_levels` | *(empty)* | Per-species levels set with the admin slider: 1 Trusted … 5 Very strict, 6 Review all |
 | `very_strict_min_windows` | 3 | Windows in a row a Very strict species needs before it appears without review |
 | `review_keep_days` | 4 | Delete held-back (unapproved) detections after this many days, unless starred; 0 = never |
-| `room_audio` | true | Admin-only Listen live and room recordings; false removes both |
+| `listen_and_record` | true | Admin-only Listen live and recordings; false removes both |
 | `live_kbps` / `live_max_listeners` | 128 / 3 | Listen-live quality and how many can listen at once |
 | `rec_kbps` / `rec_max_hours` | 256 / 24 | Recording quality and the longest automatic stop time |
 | `rec_min_free_gb` | 10 | Recording won't start below this much free disk, and stops at half of it |
@@ -493,8 +493,9 @@ the file by hand (stop Birdsong first):
 
 - **Everything stays on your computer** in the `data/` folder: settings, the
   detections database, recordings, photos and the model.
-- **Visitors can't hear anything.** Clips, live listening and room recordings
-  are for the admin only (and can be switched off with `room_audio`).
+- **Visitors can't hear anything.** Clips, live listening and recordings are
+  for the admin only (live listening and recording can be switched off with
+  `listen_and_record`).
 - **You can stop listening at any time** from the admin panel (see "Stopping
   it for a while").
 - **Your location** is used only to pick likely species, rounded to ~1 km, and

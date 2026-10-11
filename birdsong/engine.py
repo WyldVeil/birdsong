@@ -746,7 +746,7 @@ class Pauser:
                 self.resume("resumed automatically at the chosen time")
 
 
-# ---------------------------------------------------------------- live listening and room recordings
+# ---------------------------------------------------------------- live listening and recordings
 
 def ffmpeg_exe():
     """The ffmpeg that ships with Birdsong (the imageio-ffmpeg wheel), else one
@@ -899,7 +899,7 @@ class LiveListen:
 
 
 class RoomRecorder:
-    """Admin "Room recordings": the mic to recordings/rec-YYYYmmdd-HHMMSS.mp3
+    """Admin "Recordings": the mic to recordings/rec-YYYYmmdd-HHMMSS.mp3
     until stopped, the stop time passes, or the disk runs low. The stop time
     lives in the kv table, so a restart carries on in a new part file."""
 

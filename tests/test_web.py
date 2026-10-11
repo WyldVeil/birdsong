@@ -381,7 +381,7 @@ class RoomAudioWeb(Server):
         r = self.json("api/admin/recordings", admin=True)
         self.assertTrue(r["status"]["unavailable"])
         st = self.json("api/admin/status", admin=True)
-        self.assertFalse(st["room_audio"])
+        self.assertFalse(st["listen_and_record"])
 
     def test_recordings_list_play_delete(self):
         d = os.path.join(self.tmp, "recordings")

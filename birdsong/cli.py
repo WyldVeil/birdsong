@@ -300,7 +300,7 @@ def cmd_run(args, data):
     cap = audio.Capture(eng.ring.push, cfg.get("audio_backend", "auto"), cfg.get("device"), eng.status, log)
     stop = threading.Event()
     listen = recorder = None
-    if cfg.get("room_audio", True):
+    if cfg.get("listen_and_record", True) and cfg.get("room_audio", True):    # room_audio: its name in 1.6.0
         eng.listen, eng.recorder = listen, recorder = E.LiveListen(eng.ring, cfg), E.RoomRecorder(eng.ring, cfg, data)
     pauser = E.Pauser(eng, cap, cfg, data, listen, recorder)
     if pauser.paused_until != 0:

@@ -387,7 +387,7 @@ footer a { color: var(--ink-2); }
       <div class="listen-head">
         <h3>Listening now</h3>
         <span style="display:flex;align-items:center;gap:10px">
-          <span class="rec-badge" id="recBadge" hidden title="The microphone is being recorded (admin panel → Room recordings)">● REC</span>
+          <span class="rec-badge" id="recBadge" hidden title="The microphone is being recorded (admin panel → Recordings)">● REC</span>
           <button class="live-btn" id="liveBtn" type="button" title="Listen to the microphone live (admin only)" hidden></button>
           <span class="muted" style="font-size:12.5px" id="listenNote">last 30 seconds</span>
         </span>
@@ -736,8 +736,8 @@ function renderLive(L) {
 
   $("#bwNote").hidden = !L.birdweather;
   $("#recBadge").hidden = !(S.admin && L.recording);
-  $("#liveBtn").hidden = !(S.admin && L.room_audio);
-  if (LIVE.wanted && (L.paused || !L.room_audio)) liveStop();
+  $("#liveBtn").hidden = !(S.admin && L.listen_and_record);
+  if (LIVE.wanted && (L.paused || !L.listen_and_record)) liveStop();
   renderLatest(L.recent && L.recent[0]);
   renderStrip(L.recent || []);
 
@@ -1133,7 +1133,7 @@ async function openAdmin() {
       <div><b class="${e.mic_error ? "down" : clipped ? "down" : "up"}">${e.mic_error ? "Error" : clipped ? "Clipping" : "OK"}</b><span>microphone${e.level_db != null ? " · " + Math.round(e.level_db) + " dB" : ""}</span></div>
       <div><b>${fmtN(st.pending)}</b><span>rarities to review</span></div>
       <div><b>${fmtN(st.unverified || 0)}</b><span>held back by the extra filters</span></div>
-      ${st.room_audio ? `<div><b>${st.live_listeners == null ? "–" : fmtN(st.live_listeners)}</b><span>listening live right now</span></div>` : ""}
+      ${st.listen_and_record ? `<div><b>${st.live_listeners == null ? "–" : fmtN(st.live_listeners)}</b><span>listening live right now</span></div>` : ""}
       <div><b class="${st.birdweather && st.birdweather.failed ? "down" : ""}">${st.birdweather && st.birdweather.enabled ? fmtN(st.birdweather.sent || 0) : "Off"}</b><span>sent to BirdWeather${st.birdweather && st.birdweather.enabled ? ` (${st.birdweather.audio ? "with" : "no"} audio)${st.birdweather.queued ? ` · ${fmtN(st.birdweather.queued)} queued` : ""}${st.birdweather.failed ? ` · ${fmtN(st.birdweather.failed)} failed` : ""}` : ""}</span></div>
     </div>
     <p class="note">Clips are kept ${cfg.clip_days} days, capped at ${fmtN(cfg.max_clip_mb)} MB (oldest go first), and nothing new is recorded if the drive drops below ${cfg.min_free_gb} GB free. Starred clips are never deleted. Thresholds: ${pct(cfg.min_conf)} expected species, ${pct(cfg.unusual_conf)} unusual, ${pct(cfg.vagrant_conf)} rarities (which stay hidden from the public until you confirm them).${e.mic_error ? `<br><b class="down">Mic: ${esc(e.mic_error)}</b>` : ""}${clipped ? `<br><b class="down">The mic clipped in the last hour. Lower the Rear Microphone level a little.</b>` : ""}</p>
@@ -1145,7 +1145,7 @@ async function openAdmin() {
       <div class="trust" id="ruleList"></div>
       <div class="trust-add"><input class="search" id="ruleIn" list="ruleOpts" placeholder="Set rules for another species…" autocomplete="off"><datalist id="ruleOpts"></datalist><button class="btn ghost" id="ruleAdd" type="button">Open</button><span class="err" id="ruleErr"></span></div>
     </div>
-    ${st.room_audio ? `<div><h4 class="serif" style="margin:0 0 4px;font-size:18px">Room recordings</h4>
+    ${st.listen_and_record ? `<div><h4 class="serif" style="margin:0 0 4px;font-size:18px">Recordings</h4>
       <p class="note" style="margin:0 0 10px">Record the microphone to an MP3 file, e.g. while you're out. Recordings always stop automatically at the time you choose (or sooner if you stop them), and stay here until you delete them. Only you, signed in as admin, can play or download them.</p>
       <div id="recBox"><div class="empty-note">Loading…</div></div>
     </div>` : ""}
@@ -1157,7 +1157,7 @@ async function openAdmin() {
   wireRows($("#admLog"));
   renderRules(st.rules || { rules: [], names: {} });
   renderPause(st.pause);
-  if (st.room_audio) loadRecordings();
+  if (st.listen_and_record) loadRecordings();
   $("#keepSave").onclick = async () => {
     try {
       const r = await api("api/admin/settings", { body: { review_keep_days: +$("#keepDays").value } });
@@ -1214,7 +1214,7 @@ function liveStop() {
 $("#liveBtn").onclick = () => LIVE.wanted ? liveStop() : liveStart();
 liveLabel("off");
 
-// ---------- room recordings (admin) ----------
+// ---------- recordings (admin) ----------
 const fmtDur = s => s == null ? "–" : s >= 3600 ? `${Math.floor(s / 3600)} h ${String(Math.floor(s % 3600 / 60)).padStart(2, "0")} min` : `${Math.floor(s / 60)} min ${String(Math.floor(s % 60)).padStart(2, "0")} s`;
 let recTimer = null;
 async function loadRecordings() {
