@@ -819,10 +819,12 @@ async function loadPeriod(quiet) {
   loadLog(false);
 }
 
-function delta(cur, prev, unit) {
+function delta(cur, prev, partial) {
   if (prev == null) return "&nbsp;";
   const d = cur - prev;
-  const word = { day: "yesterday", week: "last week", month: "last month", year: "last year" }[S.span] || "before";
+  const word = (partial
+    ? { day: "this time yesterday", week: "this point last week", month: "this point last month", year: "this point last year" }
+    : { day: "yesterday", week: "last week", month: "last month", year: "last year" })[S.span] || "before";
   if (d === 0) return `same as ${word}`;
   return `<span class="${d > 0 ? "up" : "down"}">${d > 0 ? "▲" : "▼"} ${fmtN(Math.abs(d))}</span> vs ${word}`;
 }
@@ -838,8 +840,9 @@ function renderPeriod(P) {
   $("#kDet").textContent = fmtN(P.totals.detections);
   $("#kSp").textContent = fmtN(P.totals.species);
   $("#kNew").textContent = fmtN(P.totals.new);
-  $("#kDetD").innerHTML = delta(P.totals.detections, P.prev_totals && P.prev_totals.detections);
-  $("#kSpD").innerHTML = delta(P.totals.species, P.prev_totals && P.prev_totals.species);
+  const part = !!(P.prev_totals && P.prev_totals.partial);
+  $("#kDetD").innerHTML = delta(P.totals.detections, P.prev_totals && P.prev_totals.detections, part);
+  $("#kSpD").innerHTML = delta(P.totals.species, P.prev_totals && P.prev_totals.species, part);
   const news = P.species.filter(s => s.new);
   $("#kNewD").textContent = news.length ? news.slice(0, 3).map(s => s.common).join(", ") + (news.length > 3 ? "…" : "") : "first-ever detections";
   if (S.span === "day") {

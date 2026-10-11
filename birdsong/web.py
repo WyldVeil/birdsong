@@ -19,7 +19,7 @@ import shutil
 import sqlite3
 import threading
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
 
@@ -133,6 +133,14 @@ def _ts(d: date) -> float:
     return time.mktime(d.timetuple())
 
 
+def _same_point(a: date, pa: date, now: datetime = None) -> float:
+    """The moment as far into the period starting `pa` as `now` is into the one
+    starting `a`, in wall-clock terms (this time yesterday, etc.)."""
+    now = now or datetime.now()
+    then = datetime(pa.year, pa.month, pa.day) + (now - datetime(a.year, a.month, a.day))
+    return time.mktime(then.timetuple())
+
+
 def _add_months(d: date, n: int) -> date:
     m = d.month - 1 + n
     return date(d.year + m // 12, m % 12 + 1, 1)
@@ -228,9 +236,16 @@ def api_period(app: App, span: str, d: date, admin: bool) -> dict:
         prev_totals = None
         if prev is not None:
             pa, pb = period_bounds(span, prev)[:2]
+            p1, partial = _ts(pb), False
+            if a <= date.today() < b:
+                # The period is still going: compare with the same point in the
+                # previous one (by the clock, so DST days line up), not all of it.
+                p1, partial = min(p1, _same_point(a, pa)), True
             r = con.execute(f"SELECT COUNT(*), COUNT(DISTINCT d.sci) FROM detections d WHERE {vis} "
-                            f"AND d.start>=? AND d.start<?", (_ts(pa), _ts(pb))).fetchone()
+                            f"AND d.start>=? AND d.start<?", (_ts(pa), p1)).fetchone()
             prev_totals = {"detections": r[0], "species": r[1]}
+            if partial:
+                prev_totals["partial"] = True
         today = date.today()
         return {"span": span, "date": d.isoformat(), "label": label, "start": a.isoformat(), "end": b.isoformat(),
                 "prev": prev.isoformat() if prev else None, "next": nxt.isoformat() if nxt and nxt <= today else None,

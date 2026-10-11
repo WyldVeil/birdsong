@@ -203,6 +203,17 @@ class Admin(Server):
 
 
 class Periods(Server):
+    def test_today_compares_with_this_time_yesterday(self):
+        now = datetime.now()
+        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        self.add("Erithacus rubecula", time.time() - 1)                                   # today, just now
+        self.add("Turdus merula", time.mktime((midnight + (now - midnight) / 2 - timedelta(days=1)).timetuple()))
+        self.add("Bombycilla garrulus", _ts(date.today() - timedelta(days=1), 23, 59))      # later than now
+        P = self.json(f"api/period?span=day&date={date.today().isoformat()}")
+        self.assertEqual(P["prev_totals"], {"detections": 1, "species": 1, "partial": True})
+        self.assertEqual(web._same_point(date(2026, 10, 1), date(2026, 9, 1), datetime(2026, 10, 11, 8, 30)),
+                         time.mktime(datetime(2026, 9, 11, 8, 30).timetuple()))
+
     def test_day(self):
         d = date.today() - timedelta(days=1)
         self.add("Erithacus rubecula", _ts(d, 6, 1))
