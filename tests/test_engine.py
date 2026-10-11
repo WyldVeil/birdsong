@@ -148,6 +148,81 @@ class Pause(unittest.TestCase):
         self.assertFalse(p.status()["paused"] or self.cap.paused.is_set())
 
 
+class RoomAudio(unittest.TestCase):
+    """Real ffmpeg (the bundled one): this also checks it works on each platform."""
+
+    def setUp(self):
+        if not E.ffmpeg_exe():
+            self.skipTest("no ffmpeg")
+        self.tmp = tempfile.mkdtemp()
+        self.ring = E.Ring(40)
+        self.cfg = dict(C.DEFAULTS, rec_min_free_gb=0)
+        self.stop = __import__("threading").Event()
+        t = np.arange(E.SR // 10) / E.SR
+
+        def feed():                                         # 100 ms blocks of a 3 kHz whistle, in real time
+            while not self.stop.wait(0.1):
+                self.ring.push((8000 * np.sin(2 * np.pi * 3000 * t)).astype(np.int16), time.time())
+        __import__("threading").Thread(target=feed, daemon=True).start()
+
+    def tearDown(self):
+        self.stop.set()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_recording_makes_a_playable_mp3(self):
+        from birdsong import web
+        rec = E.RoomRecorder(self.ring, self.cfg, self.tmp)
+        st = rec.start(1)
+        self.assertTrue(st["ok"] and st["recording"], st)
+        time.sleep(3)
+        self.assertTrue(rec.stop()["ok"])
+        self.assertFalse(rec.status()["recording"])
+        files = os.listdir(os.path.join(self.tmp, "recordings"))
+        self.assertEqual(len(files), 1)
+        self.assertTrue(web.REC_NAME_RE.match(files[0]))
+        path = os.path.join(self.tmp, "recordings", files[0])
+        self.assertIn(web._mp3_seconds(path, os.path.getsize(path)), (2, 3, 4))
+        self.assertEqual(rec._kv("rec_until"), "0")
+
+    def test_restart_carries_on_recording(self):
+        rec = E.RoomRecorder(self.ring, self.cfg, self.tmp)
+        rec.start(1)
+        time.sleep(1)
+        rec.shutdown()                                       # Birdsong closing: keep the stop time
+        rec2 = E.RoomRecorder(self.ring, self.cfg, self.tmp)
+        time.sleep(1.1)                                      # a new part gets a new file name
+        rec2.resume_if_needed()
+        self.assertTrue(rec2.status()["recording"])
+        rec2.stop()
+        self.assertEqual(len(os.listdir(os.path.join(self.tmp, "recordings"))), 2)
+
+    def test_listen_live_streams_mp3_and_pause_cuts_it(self):
+        live = E.LiveListen(self.ring, self.cfg)
+        q = live.subscribe()
+        got = b""
+        deadline = time.time() + 10
+        while len(got) < 4000 and time.time() < deadline:
+            try:
+                got += q.get(timeout=1) or b""
+            except Exception:
+                pass
+        self.assertGreater(len(got), 4000)
+        self.assertTrue(got[:3] == b"ID3" or got[0] == 0xFF)    # an MP3 stream
+        cap = mock.Mock(backend="sounddevice")
+        cap.paused = __import__("threading").Event()
+        rec = E.RoomRecorder(self.ring, self.cfg, self.tmp)
+        rec.start(1)
+        p = E.Pauser(mock.Mock(spec=[]), cap, self.cfg, self.tmp, live, rec)
+        p.pause(30)
+        self.assertEqual(live.count(), 0)
+        self.assertFalse(rec.status()["recording"])
+        self.assertIsNone(live.subscribe())                  # no new listeners while stopped
+        p.resume()
+        q2 = live.subscribe()
+        self.assertIsNotNone(q2)
+        live.unsubscribe(q2)
+
+
 class Focal(unittest.TestCase):
     def test_finds_the_bird(self):
         try:

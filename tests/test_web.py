@@ -203,6 +203,20 @@ class Admin(Server):
 
 
 class Periods(Server):
+    def test_new_means_first_ever_or_back_after_45_days(self):
+        d = date.today() - timedelta(days=2)
+        self.add("Turdus merula", _ts(d - timedelta(days=100), 9))         # station started; Blackbird left
+        self.add("Turdus merula", _ts(d, 9))                               # back after 100 days: new
+        self.add("Erithacus rubecula", _ts(d - timedelta(days=10), 9))
+        self.add("Erithacus rubecula", _ts(d, 9))                          # heard 10 days ago: not new
+        self.add("Bombycilla garrulus", _ts(d, 10), tier=2)                # never heard before: new
+        P = self.json(f"api/period?span=day&date={d.isoformat()}")
+        self.assertEqual({x["sci"] for x in P["species"] if x["new"]}, {"Turdus merula", "Bombycilla garrulus"})
+        self.assertEqual(P["totals"]["new"], 2)
+        P = self.json(f"api/period?span=day&date={(d - timedelta(days=100)).isoformat()}")   # the first day
+        self.assertEqual((P["totals"]["new"], [x["new"] for x in P["species"]]), (None, [False]))
+        self.assertFalse(any(x["new"] for x in self.json("api/period?span=all")["species"]))
+
     def test_today_compares_with_this_time_yesterday(self):
         now = datetime.now()
         midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -356,6 +370,51 @@ class PauseAndSettings(Server):
         saved = C.load(self.tmp)
         self.assertEqual((saved["species_levels"], saved["species_levels_scale"]),
                          ({"Turdus merula": 6, "Erithacus rubecula": 5}, 6))
+
+
+class RoomAudioWeb(Server):
+    def test_admin_only_and_unavailable(self):
+        self.assertEqual(self.req("/live.mp3")[0], 404)                       # visitors: a plain 404
+        self.assertEqual(self.req("/rec/rec-20261011-120000.mp3")[0], 404)
+        self.assertEqual(self.req("/live.mp3", admin=True)[0], 503)          # no engine here
+        self.assertEqual(self.req("/api/admin/recordings")[0], 404)
+        r = self.json("api/admin/recordings", admin=True)
+        self.assertTrue(r["status"]["unavailable"])
+        st = self.json("api/admin/status", admin=True)
+        self.assertFalse(st["room_audio"])
+
+    def test_recordings_list_play_delete(self):
+        d = os.path.join(self.tmp, "recordings")
+        os.makedirs(d)
+        frame = bytes([0xFF, 0xFB, 0xD0, 0x00])                             # MPEG-1 Layer III, 256 kbps
+        for name in ("rec-20261011-120000.mp3", "rec-20261011-130000.mp3", "notes.txt"):
+            with open(os.path.join(d, name), "wb") as fh:
+                fh.write(frame + b"\0" * 63996)                            # 64000 bytes = 2 s at 256 kbps
+        self.app.live.recorder = mock_rec = type("R", (), {"status": lambda s: {"recording": False}})()
+        self.app.live.listen = None
+        r = self.json("api/admin/recordings", admin=True)
+        self.assertEqual([f["name"] for f in r["files"]], ["rec-20261011-130000.mp3", "rec-20261011-120000.mp3"])
+        self.assertEqual(r["files"][0]["seconds"], 2)
+        st, h, body = self.req("/rec/rec-20261011-120000.mp3", headers={"Range": "bytes=0-9"}, admin=True)
+        self.assertEqual((st, len(body)), (206, 10))
+        self.assertEqual(self.req("/rec/notes.txt", admin=True)[0], 404)
+        hdr = {"X-Birds": "1"}
+        st, _h, body = self.req("/api/admin/recording", "POST", {"action": "delete", "name": "rec-20261011-120000.mp3"},
+                                hdr, admin=True)
+        self.assertEqual([f["name"] for f in json.loads(body)["files"]], ["rec-20261011-130000.mp3"])
+        self.assertEqual(self.req("/api/admin/recording", "POST", {"action": "delete", "name": "../birds.db"},
+                                  hdr, admin=True)[0], 400)
+        self.assertEqual(self.req("/api/admin/recording", "POST", {"action": "start", "hours": 1}, hdr)[0], 404)
+        del mock_rec
+
+    def test_no_recording_while_stopped(self):
+        class P:
+            def status(self): return {"paused": True}
+        self.app.live.pauser = P()
+        self.app.live.recorder = object()
+        st, _h, body = self.req("/api/admin/recording", "POST", {"action": "start", "hours": 1}, {"X-Birds": "1"}, admin=True)
+        self.assertEqual(st, 400)
+        self.assertIn("stopped", json.loads(body)["error"])
 
 
 class SecretPath(Server):

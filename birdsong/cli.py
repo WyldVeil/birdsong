@@ -299,9 +299,14 @@ def cmd_run(args, data):
     eng = E.Engine(data, cfg)
     cap = audio.Capture(eng.ring.push, cfg.get("audio_backend", "auto"), cfg.get("device"), eng.status, log)
     stop = threading.Event()
-    pauser = E.Pauser(eng, cap, cfg, data)
+    listen = recorder = None
+    if cfg.get("room_audio", True):
+        eng.listen, eng.recorder = listen, recorder = E.LiveListen(eng.ring, cfg), E.RoomRecorder(eng.ring, cfg, data)
+    pauser = E.Pauser(eng, cap, cfg, data, listen, recorder)
     if pauser.paused_until != 0:
         cap.paused.set()                       # stayed stopped across the restart: don't open the mic
+    elif recorder is not None:
+        recorder.resume_if_needed()            # a recording was running when Birdsong closed
     cap.start()
     threading.Thread(target=pauser.run, args=(stop,), name="pause", daemon=True).start()
     threading.Thread(target=eng.run, name="engine", daemon=True).start()
@@ -324,7 +329,7 @@ def cmd_run(args, data):
         log.info(f"page: {u}")
     if cfg.get("open_browser", True) and not args.no_browser and interactive():
         _open(page_urls(cfg)[0])
-    _serve(srv, [cap.stop, eng.stop, stop.set])
+    _serve(srv, [recorder.shutdown if recorder else (lambda: None), cap.stop, eng.stop, stop.set])
 
 
 def _open(url):
@@ -464,6 +469,15 @@ def cmd_selftest(args, data):
         if "Erithacus rubecula" not in found or not clips:
             sys.exit("Model check FAILED: expected a European Robin with a clip.")
         print("Model check passed.")
+        import numpy as np
+        ff = E.ffmpeg_exe()
+        mp3 = os.path.join(tmp, "ffmpeg-check.mp3")
+        if ff:
+            p = E._mp3_encoder(mp3, 128)
+            p.communicate((np.sin(np.arange(E.SR) / E.SR * 2 * np.pi * 3000) * 8000).astype("<i2").tobytes(), timeout=60)
+        if not ff or not os.path.isfile(mp3) or os.path.getsize(mp3) < 4000:
+            sys.exit("ffmpeg check FAILED: Listen live and recordings won't work.")
+        print(f"ffmpeg check passed ({os.path.basename(ff)}): Listen live and recordings can encode MP3.")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

@@ -29,7 +29,9 @@ double-click; no Python install, no admin rights, no account, no cloud.
   navigation: detections per hour or day, a "who sang when" grid, comparisons
   with the previous period, and first song of the day.
 - **Bird cards.** Photo cards for every species, sortable by most or fewest
-  detections, name, most recently heard, first heard, confidence or rarity.
+  detections, name, most recently heard, first heard, confidence or rarity. A
+  **New** badge marks birds heard for the first time ever, or for the first
+  time in 45 days or more (returning migrants).
 - **Every detection** with its time, confidence and spectrogram, plus a year
   calendar.
 - **Local list.** Every species expected where you live, greyed out until
@@ -39,6 +41,9 @@ double-click; no Python install, no admin rights, no account, no cloud.
 - **Recordings for you only.** The admin can play, download, star (keep forever)
   or delete each clip. Visitors can't hear anything, because a microphone in a
   house picks up more than birds.
+- **Listen live and record (admin only).** Signed in as admin, you can listen
+  to the microphone live from anywhere (your phone included), or record it to
+  MP3 files for up to 24 hours at a time. Visitors never see either.
 - **Extra false-detection filters on top of BirdNET.** A shifted re-check
   catches hits on background noise, a human-noise guard stops sniffs becoming
   "owls", and a per-species slider lets you trust your garden regulars or
@@ -336,6 +341,30 @@ Any microphone works, though. A cheap USB mic will catch nearby birds.
 - **Bats** aren't detected. They call in ultrasound, which needs a special
   microphone and a different model.
 
+### Listen live and room recordings
+
+Both are for the admin only. To anyone else the stream and the recordings
+don't exist (a plain "not found"), and the buttons aren't shown.
+
+- **Listen live:** the **Listen live** button in the "Listening now" panel
+  streams the microphone as MP3 (128 kbps), lightly levelled so a quiet garden
+  is audible on earphones. Nothing is encoded unless someone is listening. At
+  most 3 listeners at once; every start and stop is logged with its IP address.
+- **Room recordings:** in the admin panel, **Start recording** and choose when
+  it stops (1 to 24 hours; it always stops by itself). Files are 256 kbps MP3
+  (about 115 MB an hour) in `data/recordings/`; play, download or delete them
+  there. Recording won't start below 10 GB free and stops at 5 GB. If Birdsong
+  is closed mid-recording it carries on in a new file when it starts again.
+- **Stopping Birdsong** ends both straight away.
+- **Turn both off** by setting `"room_audio": false` in `data/config.json`.
+- **Be considerate:** a microphone in a home hears conversations too. Tell the
+  people you live with, and check the law where you live before recording
+  other people.
+
+They use ffmpeg, which is included (the `imageio-ffmpeg` package bundles it for
+Windows, macOS, Linux and Raspberry Pi). If it doesn't run on your system,
+install ffmpeg yourself and Birdsong will use that one.
+
 ### Stopping it for a while
 
 The admin panel's **Birdsong** card has **Stop for 30 min**, **Stop for 1 h**,
@@ -450,6 +479,10 @@ the file by hand (stop Birdsong first):
 | `species_levels` | *(empty)* | Per-species levels set with the admin slider: 1 Trusted … 5 Very strict, 6 Review all |
 | `very_strict_min_windows` | 3 | Windows in a row a Very strict species needs before it appears without review |
 | `review_keep_days` | 4 | Delete held-back (unapproved) detections after this many days, unless starred; 0 = never |
+| `room_audio` | true | Admin-only Listen live and room recordings; false removes both |
+| `live_kbps` / `live_max_listeners` | 128 / 3 | Listen-live quality and how many can listen at once |
+| `rec_kbps` / `rec_max_hours` | 256 / 24 | Recording quality and the longest automatic stop time |
+| `rec_min_free_gb` | 10 | Recording won't start below this much free disk, and stops at half of it |
 | `trusted_species` | *(empty)* | Shortcut list of species that start at Trusted |
 | `birdweather_token` | *(empty = off)* | BirdWeather station token (set with `birdweather`) |
 | `birdweather_audio` | false | Also send a FLAC clip with each detection (never clips with speech) |
@@ -460,7 +493,8 @@ the file by hand (stop Birdsong first):
 
 - **Everything stays on your computer** in the `data/` folder: settings, the
   detections database, recordings, photos and the model.
-- **Visitors can't hear recordings.** Only the admin can play them.
+- **Visitors can't hear anything.** Clips, live listening and room recordings
+  are for the admin only (and can be switched off with `room_audio`).
 - **You can stop listening at any time** from the admin panel (see "Stopping
   it for a while").
 - **Your location** is used only to pick likely species, rounded to ~1 km, and

@@ -47,6 +47,13 @@ photo and shown on the bird's page with a link to the file.
 - Pillow (MIT-CMU / HPND), which bundles libjpeg-turbo, libpng, zlib and
   other image libraries under their own permissive licences (listed in its
   dist-info)
+- imageio-ffmpeg (BSD-2-Clause), which bundles a static FFmpeg build
+  (https://ffmpeg.org, GPL-3.0-or-later as built, including LAME for MP3).
+  It is an unmodified binary from the imageio-ffmpeg wheel on PyPI, run as a
+  separate program for Listen live and recordings. FFmpeg's source code is
+  available from https://ffmpeg.org/download.html, and the build sources from
+  the binary's own provider as listed in imageio-ffmpeg's README
+  (https://github.com/imageio/imageio-ffmpeg).
 - CPython 3.12 (PSF License), the relocatable python-build-standalone builds
   (https://github.com/astral-sh/python-build-standalone), with each bundled
   package's own licence files in `runtime/` (`site-packages/*.dist-info/`).

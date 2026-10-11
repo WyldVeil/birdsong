@@ -88,6 +88,15 @@ DEFAULTS = {
     "min_free_gb": 5,
     "fetch_photos": True,
 
+    # --- Listen live and room recordings (admin only; MP3 via the bundled ffmpeg).
+    # Set room_audio to false to remove both from the page entirely.
+    "room_audio": True,
+    "live_kbps": 128,             # listen-live stream
+    "live_max_listeners": 3,
+    "rec_kbps": 256,              # recordings: about 115 MB per hour
+    "rec_max_hours": 24,          # every recording has an automatic stop, at most this far ahead
+    "rec_min_free_gb": 10,        # won't start below this much free disk; stops at half of it
+
     # --- BirdWeather (optional; see README). Empty token = off.
     "birdweather_token": "",
     "birdweather_audio": False,   # also send a short FLAC clip (never ones containing speech)

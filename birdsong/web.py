@@ -14,6 +14,7 @@ import hmac
 import json
 import logging
 import os
+import queue
 import re
 import shutil
 import sqlite3
@@ -125,6 +126,21 @@ def _det(r, admin):
     return d
 
 
+NEW_GAP_DAYS = 45
+
+
+def _fresh_species(con, vis: str, t0: float, t1: float) -> set:
+    """Species with a detection in [t0, t1) that is their first ever, or their
+    first after NEW_GAP_DAYS or more unheard. Looking back only NEW_GAP_DAYS
+    before t0 is enough: no earlier row in that window means a long gap (or none)."""
+    gap = NEW_GAP_DAYS * 86400
+    return {r[0] for r in con.execute(
+        f"SELECT sci FROM (SELECT d.sci AS sci, d.start AS start, "
+        f"LAG(d.start) OVER (PARTITION BY d.sci ORDER BY d.start) AS prev "
+        f"FROM detections d WHERE {vis} AND d.start>=? AND d.start<?) "
+        f"WHERE start>=? AND (prev IS NULL OR start-prev>=?)", (t0 - gap, t1, t0, gap))}
+
+
 def _vis(admin):
     return "d.hidden=0 AND d.verified NOT IN ('failed','human','review')" if admin else PUBLIC_SQL
 
@@ -223,12 +239,17 @@ def api_period(app: App, span: str, d: date, admin: bool) -> dict:
             s["counts"][i] += 1
             s["last"] = r["start"]
             s["best"] = max(s["best"], r["conf"])
-        firsts = dict(con.execute(f"SELECT d.sci, MIN(d.start) FROM detections d WHERE {vis} GROUP BY d.sci").fetchall())
+        # "New": heard in this period for the first time ever, or for the first
+        # time in NEW_GAP_DAYS or more (a returning migrant). Only meaningful if
+        # the station was already listening before the period: in the period it
+        # started, every bird would be "new".
+        news_ok = first is not None and first < a
+        fresh = _fresh_species(con, vis, t0, t1) if news_ok else set()
         species = []
         for sci, s in per.items():
             item = _brief(sp, sci)
             item.update(n=s["n"], counts=s["counts"], first=s["first"], last=s["last"], best=round(s["best"], 3),
-                        new=t0 <= firsts.get(sci, 0) < t1)
+                        new=sci in fresh)
             species.append(item)
         species.sort(key=lambda x: (-x["n"], x["common"]))
         hours = con.execute("SELECT COALESCE(SUM(seconds),0) FROM daily WHERE day>=? AND day<?",
@@ -251,7 +272,7 @@ def api_period(app: App, span: str, d: date, admin: bool) -> dict:
                 "prev": prev.isoformat() if prev else None, "next": nxt.isoformat() if nxt and nxt <= today else None,
                 "current": a <= today < b, "buckets": labels, "keys": [str(k) for k in keys], "series": series,
                 "species": species, "prev_totals": prev_totals,
-                "totals": {"detections": len(rows), "species": len(per), "new": sum(1 for x in species if x["new"]),
+                "totals": {"detections": len(rows), "species": len(per), "new": sum(1 for x in species if x["new"]) if news_ok else None,
                            "hours": round(hours, 1)},
                 "first": {"sci": rows[0]["sci"], "start": rows[0]["start"]} if rows else None,
                 "since": first.isoformat() if first else None}
@@ -275,6 +296,9 @@ def api_live(app: App, since: int, admin: bool) -> dict:
     if admin:
         out.update(peak=snap.get("peak"), clipped_at=snap.get("clipped_at"), mic_error_text=snap.get("mic_error"),
                    low_disk=snap.get("low_disk"))
+        rec = _recorder(app)
+        out["recording"] = bool(rec and rec.status()["recording"])
+        out["room_audio"] = _listen(app) is not None
     con = app.connect()
     if con is None:
         return out
@@ -403,6 +427,66 @@ def _dir_bytes(path):
     return total
 
 
+def _listen(app: App):
+    return getattr(app.live, "listen", None) if app.live else None
+
+
+def _recorder(app: App):
+    return getattr(app.live, "recorder", None) if app.live else None
+
+
+REC_NAME_RE = re.compile(r"^rec-(\d{8})-(\d{6})\.mp3$")
+_MP3_KBPS = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320]   # MPEG-1 Layer III
+
+
+def _mp3_seconds(path: str, size: int):
+    """Duration of a constant-bitrate MP3, from its first frame header."""
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(8192)
+    except OSError:
+        return None
+    for i in range(len(head) - 3):
+        if head[i] == 0xFF and (head[i + 1] & 0xFE) == 0xFA:        # sync, MPEG-1, Layer III
+            idx = (head[i + 2] >> 4) & 0x0F
+            if 0 < idx < 15:
+                return round(size * 8 / (_MP3_KBPS[idx] * 1000))
+    return None
+
+
+def api_recordings(app: App) -> dict:
+    rec = _recorder(app)
+    status = rec.status() if rec else {"recording": False, "unavailable": True}
+    d = os.path.join(app.data, "recordings")
+    files = []
+    if os.path.isdir(d):
+        for name in os.listdir(d):
+            m = REC_NAME_RE.match(name)
+            if not m:
+                continue
+            path = os.path.join(d, name)
+            size = os.path.getsize(path)
+            start = time.mktime(time.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S"))
+            active = name == status.get("file")
+            seconds = _mp3_seconds(path, size)
+            if active and status.get("started"):
+                # ffmpeg writes in big blocks: show elapsed time and the size it's heading for.
+                seconds = round(time.time() - float(status["started"]))
+                size = max(size, int(seconds * int(app.cfg.get("rec_kbps", 256)) * 125))
+            files.append({"name": name, "start": start, "bytes": size, "seconds": seconds, "active": active})
+    cur = status.get("file")
+    if cur and status.get("started") and not any(f["name"] == cur for f in files):
+        # Just started: ffmpeg hasn't created the file yet.
+        m = REC_NAME_RE.match(cur)
+        if m:
+            seconds = round(time.time() - float(status["started"]))
+            files.append({"name": cur, "start": time.mktime(time.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")),
+                          "bytes": int(seconds * int(app.cfg.get("rec_kbps", 256)) * 125), "seconds": seconds, "active": True})
+    files.sort(key=lambda f: -f["start"])
+    return {"status": status, "files": files, "disk_free": shutil.disk_usage(app.data).free,
+            "kbps": app.cfg.get("rec_kbps", 256), "max_hours": app.cfg.get("rec_max_hours", 24)}
+
+
 def api_admin_status(app: App) -> dict:
     du = shutil.disk_usage(app.data)
     snap = app.live.snapshot(10 ** 12) if app.live else {}
@@ -424,6 +508,9 @@ def api_admin_status(app: App) -> dict:
             pauser = getattr(app.live, "pauser", None)
             out["pause"] = pauser.status() if pauser else None
             out["review_keep_days"] = app.cfg.get("review_keep_days", 4)
+            listen = _listen(app)
+            out["live_listeners"] = listen.count() if listen else None
+            out["room_audio"] = listen is not None
             out["unverified"] = con.execute("SELECT COUNT(*) FROM detections WHERE verified IN ('failed','human','review') "
                                             "AND hidden=0").fetchone()[0]
             bw = dict(con.execute("SELECT status, COUNT(*) FROM birdweather GROUP BY status").fetchall())
@@ -748,9 +835,57 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_file(safe_path(app, r["clip"]), ctype, "private, no-store", ranges=True)
             except ValueError:
                 return False
+        if rest == "live.mp3" and get:
+            # The microphone, live. Admin only: to anyone else a plain 404.
+            if not self.is_admin():
+                return False
+            return self.stream_live()
+        if get and rest.startswith("rec/"):
+            name = rest[4:]
+            if not self.is_admin() or not REC_NAME_RE.match(name):
+                return False
+            return self.send_file(os.path.join(app.data, "recordings", name), "audio/mpeg", "private, no-store",
+                                  ranges=True)
         if not rest.startswith("api/"):
             return False
         return self.api(method, get, rest[4:], {k: v[-1] for k, v in parse_qs(qs).items()})
+
+    def stream_live(self) -> bool:
+        listen = _listen(self.app)
+        pauser = getattr(self.app.live, "pauser", None)
+        if listen is None:
+            return self.send_json(503, {"ok": False, "error": "Live audio isn't available here."})
+        if pauser is not None and pauser.status()["paused"]:
+            return self.send_json(503, {"ok": False, "error": "Birdsong is stopped."})
+        q = listen.subscribe()
+        if q is None:
+            return self.send_json(503, {"ok": False, "error": "Too many people are listening already, or ffmpeg is missing."})
+        ip, t0 = self.client_ip(), time.time()
+        log.info(f"listen live: started by {ip}")
+        try:
+            self.send_response(200)
+            self.headers_common()
+            self.send_header("Content-Type", "audio/mpeg")
+            self.send_header("Accept-Ranges", "none")
+            self.end_headers()
+            if self.command == "HEAD":
+                return True
+            while True:
+                try:
+                    chunk = q.get(timeout=5)
+                except queue.Empty:
+                    continue
+                if chunk is None:
+                    break
+                self.wfile.write(chunk)
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        finally:
+            listen.unsubscribe(q)
+            log.info(f"listen live: {ip} stopped after {time.time() - t0:.0f} s")
+        self.close_connection = True
+        return True
 
     def _row(self, det_id):
         con = self.app.connect()
@@ -799,6 +934,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, {"admin": admin})
             if api == "admin/status" and admin:
                 return self.send_json(200, api_admin_status(app))
+            if api == "admin/recordings" and admin:
+                return self.send_json(200, api_recordings(app))
             if api == "admin/review" and admin:
                 return self.send_json(200, api_admin_review(app))
             if api == "admin/rule" and admin:
@@ -822,6 +959,37 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, {"ok": True}, extra=[self.cookie("", 0)])
         if not self.is_admin():
             return False
+        if api == "admin/recording":
+            body = self.read_json() or {}
+            action, rec = body.get("action"), _recorder(app)
+            if action in ("start", "stop") and rec is None:
+                return self.send_json(503, {"ok": False, "error": "Recording isn't available here."})
+            if action == "start":
+                pauser = getattr(app.live, "pauser", None)
+                if pauser is not None and pauser.status()["paused"]:
+                    return self.send_json(400, {"ok": False, "error": "Birdsong is stopped. Resume it first."})
+                try:
+                    hours = float(body.get("hours") or 4)
+                except (TypeError, ValueError):
+                    return self.send_json(400, {"ok": False, "error": "hours must be a number"})
+                res = rec.start(hours)
+            elif action == "stop":
+                res = rec.stop()
+            elif action == "delete":
+                name = str(body.get("name") or "")
+                if not REC_NAME_RE.match(name) or (rec and name == rec.status().get("file")):
+                    return self.send_json(400, {"ok": False, "error": "Can't delete that recording (is it still recording?)."})
+                try:
+                    os.unlink(os.path.join(app.data, "recordings", name))
+                except FileNotFoundError:
+                    pass
+                res = {"ok": True}
+            else:
+                return self.send_json(400, {"ok": False, "error": "unknown action"})
+            if not res.get("ok", True):
+                return self.send_json(400, res)
+            log.info(f"recording {action} by {ip} {body.get('hours') or body.get('name') or ''}".rstrip())
+            return self.send_json(200, {"ok": True, **api_recordings(app)})
         if api == "admin/pause":
             pauser = getattr(app.live, "pauser", None)
             if pauser is None:

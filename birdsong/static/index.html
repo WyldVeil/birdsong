@@ -338,6 +338,20 @@ button.tchip:hover { border-color: var(--ink-3); }
 .tchip .lvtag { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
 .tchip.lv1 .lvtag { color: var(--live); } .tchip.lv3 .lvtag, .tchip.lv4 .lvtag { color: var(--warn); } .tchip.lv5 .lvtag, .tchip.lv6 .lvtag { color: var(--bad); }
 .recbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.live-btn { display: none; align-items: center; gap: 6px; border: 1px solid color-mix(in oklab, var(--accent) 45%, transparent); background: color-mix(in oklab, var(--accent) 14%, transparent); color: var(--accent); border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+body.admin .live-btn { display: inline-flex; }
+@media (max-width: 640px) { body.admin #listenNote { display: none; } }
+.live-btn.on { background: var(--accent); color: var(--accent-ink); }
+.rec-badge { font: 700 11.5px var(--sans); letter-spacing: .06em; color: #fff; background: var(--bad); border-radius: 6px; padding: 3px 8px; animation: pulse 2s infinite; }
+.recbar select { background: var(--card); border: 1px solid var(--line-2); border-radius: 10px; padding: 9px 10px; color: var(--ink); }
+.recbar .live { color: var(--bad); font-weight: 600; }
+.rec-list { display: flex; flex-direction: column; margin-top: 10px; }
+.rec-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 12px; border-top: 1px solid var(--line); }
+.rec-row:first-child { border-top: 0; }
+.rec-row b { font-weight: 600; } .rec-row small { color: var(--ink-3); display: block; font-size: 12px; }
+.rec-row .act { display: flex; gap: 6px; } .rec-row .act .ib { display: grid; }
+.rec-row audio { grid-column: 1 / -1; width: 100%; height: 36px; }
+.live-btn .dot { width: 7px; height: 7px; background: currentColor; animation: pulse 2s infinite; }
 .rule { width: min(460px, calc(100vw - 24px)); }
 .rule .rule-av { width: 48px; height: 48px; border-radius: 12px; object-fit: cover; background: var(--card-3); }
 .rule input[type=range] { width: 100%; accent-color: var(--accent); margin: 4px 0 0; }
@@ -372,7 +386,11 @@ footer a { color: var(--ink-2); }
     <div class="card listen">
       <div class="listen-head">
         <h3>Listening now</h3>
-        <span class="muted" style="font-size:12.5px" id="listenNote">last 30 seconds</span>
+        <span style="display:flex;align-items:center;gap:10px">
+          <span class="rec-badge" id="recBadge" hidden title="The microphone is being recorded (admin panel → Room recordings)">● REC</span>
+          <button class="live-btn" id="liveBtn" type="button" title="Listen to the microphone live (admin only)" hidden></button>
+          <span class="muted" style="font-size:12.5px" id="listenNote">last 30 seconds</span>
+        </span>
       </div>
       <div class="scope" id="scope">
         <canvas id="wf" width="600" height="64" aria-label="Live spectrogram of the microphone"></canvas>
@@ -413,7 +431,7 @@ footer a { color: var(--ink-2); }
     <div class="tiles">
       <div class="card tile"><div class="k">Detections</div><div class="v num" id="kDet">–</div><div class="d" id="kDetD">&nbsp;</div></div>
       <div class="card tile"><div class="k">Species</div><div class="v num" id="kSp">–</div><div class="d" id="kSpD">&nbsp;</div></div>
-      <div class="card tile"><div class="k">New to the list</div><div class="v num" id="kNew">–</div><div class="d" id="kNewD">&nbsp;</div></div>
+      <div class="card tile"><div class="k">New &amp; returning</div><div class="v num" id="kNew">–</div><div class="d" id="kNewD">&nbsp;</div></div>
       <div class="card tile"><div class="k" id="kFirstK">First song</div><div class="v sm" id="kFirst">–</div><div class="d" id="kFirstD">&nbsp;</div></div>
     </div>
     <div class="grid2">
@@ -717,6 +735,9 @@ function renderLive(L) {
   } else h.innerHTML = "";
 
   $("#bwNote").hidden = !L.birdweather;
+  $("#recBadge").hidden = !(S.admin && L.recording);
+  $("#liveBtn").hidden = !(S.admin && L.room_audio);
+  if (LIVE.wanted && (L.paused || !L.room_audio)) liveStop();
   renderLatest(L.recent && L.recent[0]);
   renderStrip(L.recent || []);
 
@@ -839,12 +860,13 @@ function renderPeriod(P) {
     : `${P.label}${P.totals.hours ? ` · ${P.totals.hours} hours listened` : ""}`;
   $("#kDet").textContent = fmtN(P.totals.detections);
   $("#kSp").textContent = fmtN(P.totals.species);
-  $("#kNew").textContent = fmtN(P.totals.new);
+  $("#kNew").textContent = P.totals.new == null ? "–" : fmtN(P.totals.new);
   const part = !!(P.prev_totals && P.prev_totals.partial);
   $("#kDetD").innerHTML = delta(P.totals.detections, P.prev_totals && P.prev_totals.detections, part);
   $("#kSpD").innerHTML = delta(P.totals.species, P.prev_totals && P.prev_totals.species, part);
   const news = P.species.filter(s => s.new);
-  $("#kNewD").textContent = news.length ? news.slice(0, 3).map(s => s.common).join(", ") + (news.length > 3 ? "…" : "") : "first-ever detections";
+  $("#kNewD").textContent = P.totals.new == null ? "listening started in this period"
+    : news.length ? news.slice(0, 3).map(s => s.common).join(", ") + (news.length > 3 ? "…" : "") : "first heard, or back after 45+ days";
   if (S.span === "day") {
     $("#kFirstK").textContent = "First song";
     if (P.first) {
@@ -1111,6 +1133,7 @@ async function openAdmin() {
       <div><b class="${e.mic_error ? "down" : clipped ? "down" : "up"}">${e.mic_error ? "Error" : clipped ? "Clipping" : "OK"}</b><span>microphone${e.level_db != null ? " · " + Math.round(e.level_db) + " dB" : ""}</span></div>
       <div><b>${fmtN(st.pending)}</b><span>rarities to review</span></div>
       <div><b>${fmtN(st.unverified || 0)}</b><span>held back by the extra filters</span></div>
+      ${st.room_audio ? `<div><b>${st.live_listeners == null ? "–" : fmtN(st.live_listeners)}</b><span>listening live right now</span></div>` : ""}
       <div><b class="${st.birdweather && st.birdweather.failed ? "down" : ""}">${st.birdweather && st.birdweather.enabled ? fmtN(st.birdweather.sent || 0) : "Off"}</b><span>sent to BirdWeather${st.birdweather && st.birdweather.enabled ? ` (${st.birdweather.audio ? "with" : "no"} audio)${st.birdweather.queued ? ` · ${fmtN(st.birdweather.queued)} queued` : ""}${st.birdweather.failed ? ` · ${fmtN(st.birdweather.failed)} failed` : ""}` : ""}</span></div>
     </div>
     <p class="note">Clips are kept ${cfg.clip_days} days, capped at ${fmtN(cfg.max_clip_mb)} MB (oldest go first), and nothing new is recorded if the drive drops below ${cfg.min_free_gb} GB free. Starred clips are never deleted. Thresholds: ${pct(cfg.min_conf)} expected species, ${pct(cfg.unusual_conf)} unusual, ${pct(cfg.vagrant_conf)} rarities (which stay hidden from the public until you confirm them).${e.mic_error ? `<br><b class="down">Mic: ${esc(e.mic_error)}</b>` : ""}${clipped ? `<br><b class="down">The mic clipped in the last hour. Lower the Rear Microphone level a little.</b>` : ""}</p>
@@ -1122,6 +1145,10 @@ async function openAdmin() {
       <div class="trust" id="ruleList"></div>
       <div class="trust-add"><input class="search" id="ruleIn" list="ruleOpts" placeholder="Set rules for another species…" autocomplete="off"><datalist id="ruleOpts"></datalist><button class="btn ghost" id="ruleAdd" type="button">Open</button><span class="err" id="ruleErr"></span></div>
     </div>
+    ${st.room_audio ? `<div><h4 class="serif" style="margin:0 0 4px;font-size:18px">Room recordings</h4>
+      <p class="note" style="margin:0 0 10px">Record the microphone to an MP3 file, e.g. while you're out. Recordings always stop automatically at the time you choose (or sooner if you stop them), and stay here until you delete them. Only you, signed in as admin, can play or download them.</p>
+      <div id="recBox"><div class="empty-note">Loading…</div></div>
+    </div>` : ""}
     <div><h4 class="serif" style="margin:0 0 4px;font-size:18px">Review, hidden &amp; saved</h4>
     <div class="recbar" style="margin-bottom:10px;font-size:13px"><label class="muted">Auto-clear held-back detections after
       <input id="keepDays" type="number" min="0" max="365" step="1" value="${esc(String(st.review_keep_days ?? 4))}" style="width:64px;background:var(--card);border:1px solid var(--line-2);border-radius:8px;padding:5px 8px;color:var(--ink)"> days</label>
@@ -1130,6 +1157,7 @@ async function openAdmin() {
   wireRows($("#admLog"));
   renderRules(st.rules || { rules: [], names: {} });
   renderPause(st.pause);
+  if (st.room_audio) loadRecordings();
   $("#keepSave").onclick = async () => {
     try {
       const r = await api("api/admin/settings", { body: { review_keep_days: +$("#keepDays").value } });
@@ -1137,9 +1165,103 @@ async function openAdmin() {
     } catch (e) { $("#keepMsg").textContent = e.message; }
   };
   $("#admX").onclick = () => $("#admDlg").close();
-  $("#admOut").onclick = async () => { await api("api/logout", { body: {} }); $("#admDlg").close(); await checkMe(); refreshAll(); };
+  $("#admOut").onclick = async () => { liveStop(); await api("api/logout", { body: {} }); $("#admDlg").close(); await checkMe(); refreshAll(); };
 }
 $("#admDlg").addEventListener("close", () => { if (audio) audio.pause(); });
+
+// ---------- listen live (admin) ----------
+const HEADPHONES = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="7" rx="1.5"/><rect x="17" y="14" width="4" height="7" rx="1.5"/></svg>';
+const LIVE = { audio: null, wanted: false, t0: 0, timer: null, retries: 0 };
+function liveLabel(state) {
+  const b = $("#liveBtn"); if (!b) return;
+  b.classList.toggle("on", state === "live" || state === "connecting");
+  const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  b.innerHTML = state === "live" ? `<span class="dot"></span> Live ${mmss((Date.now() - LIVE.t0) / 1000)} · Stop`
+    : state === "connecting" ? `<span class="dot"></span> Connecting… · Stop`
+    : state === "error" ? `${HEADPHONES} Couldn't connect, retry`
+    : `${HEADPHONES} Listen live`;
+}
+function liveConnect() {
+  if (LIVE.audio) { LIVE.audio.pause(); LIVE.audio.removeAttribute("src"); LIVE.audio.load(); }
+  const a = LIVE.audio = new Audio();
+  a.preload = "none";
+  a.src = `live.mp3?t=${Date.now()}`;
+  a.onplaying = () => { LIVE.retries = 0; LIVE.t0 = LIVE.t0 || Date.now(); liveLabel("live"); };
+  a.onwaiting = () => liveLabel("connecting");
+  const lost = () => {                       // network blip (e.g. on a bus): reconnect
+    if (!LIVE.wanted || a !== LIVE.audio) return;
+    if (++LIVE.retries > 20) { liveStop(); liveLabel("error"); return; }
+    liveLabel("connecting");
+    setTimeout(() => LIVE.wanted && liveConnect(), Math.min(10000, 1500 * LIVE.retries));
+  };
+  a.onerror = lost; a.onended = lost; a.onstalled = () => setTimeout(() => a.readyState < 3 && lost(), 8000);
+  a.play().catch(() => { liveStop(); liveLabel("error"); });
+}
+function liveStart() {
+  LIVE.wanted = true; LIVE.t0 = 0; LIVE.retries = 0;
+  liveLabel("connecting"); liveConnect();
+  clearInterval(LIVE.timer); LIVE.timer = setInterval(() => LIVE.audio && !LIVE.audio.paused && LIVE.t0 && liveLabel("live"), 1000);
+  if ("mediaSession" in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({ title: "Microphone (live)", artist: (S.info && S.info.title) || "Birdsong" });
+    try { navigator.mediaSession.setActionHandler("pause", liveStop); navigator.mediaSession.setActionHandler("stop", liveStop); } catch (_) {}
+  }
+}
+function liveStop() {
+  LIVE.wanted = false; clearInterval(LIVE.timer);
+  if (LIVE.audio) { LIVE.audio.pause(); LIVE.audio.removeAttribute("src"); LIVE.audio.load(); LIVE.audio = null; }
+  liveLabel("off");
+}
+$("#liveBtn").onclick = () => LIVE.wanted ? liveStop() : liveStart();
+liveLabel("off");
+
+// ---------- room recordings (admin) ----------
+const fmtDur = s => s == null ? "–" : s >= 3600 ? `${Math.floor(s / 3600)} h ${String(Math.floor(s % 3600 / 60)).padStart(2, "0")} min` : `${Math.floor(s / 60)} min ${String(Math.floor(s % 60)).padStart(2, "0")} s`;
+let recTimer = null;
+async function loadRecordings() {
+  try { renderRecordings(await api("api/admin/recordings")); }
+  catch (e) { $("#recBox").innerHTML = `<div class="empty-note">Couldn't load recordings.</div>`; }
+}
+function renderRecordings(R) {
+  const box = $("#recBox"); if (!box) return;
+  const st = R.status || {};
+  const hours = [1, 2, 4, 8, 12, 24].filter(h => h <= (R.max_hours || 24));
+  const bar = st.unavailable ? `<span class="muted">Recording isn't available here.</span>`
+    : st.recording ? `<span class="live">● Recording since ${tTime(st.started)}</span><span class="muted">stops automatically at ${tTime(st.until)}${new Date(st.until * 1000).toDateString() !== new Date().toDateString() ? " tomorrow" : ""}</span>
+        <button class="btn" type="button" id="recStop">Stop recording</button>`
+    : `<button class="btn" type="button" id="recStart">● Start recording</button>
+       <label class="muted" style="font-size:13px">stop automatically after <select id="recHours">${hours.map(h => `<option value="${h}"${h === 4 ? " selected" : ""}>${h} hour${h > 1 ? "s" : ""}</option>`).join("")}</select></label>`;
+  const list = R.files.length ? R.files.map(f => `<div class="rec-row" data-name="${esc(f.name)}">
+      <div><b>${esc(tDate(f.start, { weekday: "short", day: "numeric", month: "short" }))}, ${tTime(f.start)}${f.active ? ' <span class="flag" style="display:inline-block;color:var(--bad)">recording…</span>' : ""}</b>
+        <small>${fmtDur(f.seconds)} · ${bytes(f.bytes)}</small></div>
+      <div class="act">
+        <button class="ib" data-r="play" title="Play here">${ICON.play}</button>
+        <a class="ib" href="rec/${encodeURIComponent(f.name)}" download="${esc(f.name)}" title="Download">${ICON.dl}</a>
+        <button class="ib" data-r="del" title="Delete" ${f.active ? "disabled" : ""}>${ICON.trash}</button>
+      </div></div>`).join("") : `<div class="empty-note" style="min-height:0;padding:16px">No recordings yet.</div>`;
+  box.innerHTML = `<div class="recbar">${bar}</div><div class="err" id="recErr"></div>
+    <div class="card rec-list">${list}</div>
+    <p class="note" style="margin:8px 0 0">${R.files.length} recording${R.files.length === 1 ? "" : "s"} using <b>${bytes(R.files.reduce((t, f) => t + f.bytes, 0))}</b> · <b>${bytes(R.disk_free)}</b> free on the drive · ${R.kbps} kbps MP3, about ${Math.round(R.kbps * 0.45)} MB per hour.</p>`;
+  const act = async body => {
+    $("#recErr").textContent = "";
+    try { renderRecordings(await api("api/admin/recording", { body })); pollLive(); }
+    catch (e) { $("#recErr").textContent = e.message; }
+  };
+  if ($("#recStart")) $("#recStart").onclick = () => act({ action: "start", hours: +$("#recHours").value });
+  if ($("#recStop")) $("#recStop").onclick = () => act({ action: "stop" });
+  $$(".rec-row", box).forEach(row => {
+    const name = row.dataset.name;
+    $('[data-r="play"]', row).onclick = () => {
+      const a = $("audio", row);
+      if (a) { a.remove(); return; }
+      row.insertAdjacentHTML("beforeend", `<audio controls preload="metadata" src="rec/${encodeURIComponent(name)}"></audio>`);
+      $("audio", row).play().catch(() => {});
+    };
+    const del = $('[data-r="del"]', row);
+    if (del) del.onclick = () => { if (confirm("Delete this recording for good?")) act({ action: "delete", name }); };
+  });
+  clearTimeout(recTimer);
+  if (st.recording && $("#admDlg").open) recTimer = setTimeout(loadRecordings, 15000);   // keep size/duration fresh
+}
 
 // ---------- stop / resume Birdsong (admin) ----------
 function renderPause(P) {
@@ -1147,11 +1269,11 @@ function renderPause(P) {
   if (!P) { box.innerHTML = `<span class="muted">The listening engine isn't running.</span>`; return; }
   if (P.paused) {
     const until = P.until ? `until ${tTime(P.until)}${new Date(P.until * 1000).toDateString() !== new Date().toDateString() ? " on " + tDate(P.until, { weekday: "short", day: "numeric", month: "short" }) : ""}` : "until you resume it";
-    box.innerHTML = `<p class="note" style="margin:0 0 10px"><b class="down">Stopped ${until}.</b> The microphone is released (and muted, where the system allows it): nothing is listened to or analysed.</p>
+    box.innerHTML = `<p class="note" style="margin:0 0 10px"><b class="down">Stopped ${until}.</b> The microphone is released (and muted, where the system allows it): nothing is listened to, analysed, recorded or streamed.</p>
       <button class="btn" type="button" id="pResume">▶ Resume Birdsong</button><span class="err" id="pErr"></span>`;
     $("#pResume").onclick = () => doPause({ action: "resume" });
   } else {
-    box.innerHTML = `<p class="note" style="margin:0 0 10px">Running. Stopping releases the microphone, e.g. for privacy, until you resume it or the time runs out.</p>
+    box.innerHTML = `<p class="note" style="margin:0 0 10px">Running. Stopping releases the microphone and ends any recording or live listening, e.g. for privacy, until you resume it or the time runs out.</p>
       <div class="recbar">
         <button class="btn ghost" type="button" data-min="30">Stop for 30 min</button>
         <button class="btn ghost" type="button" data-min="60">Stop for 1 h</button>
@@ -1170,7 +1292,8 @@ function renderPause(P) {
 async function doPause(body) {
   try {
     const r = await api("api/admin/pause", { body });
-    renderPause(r.pause); pollLive();
+    if (r.pause && r.pause.paused) liveStop();
+    renderPause(r.pause); pollLive(); if ($("#recBox")) loadRecordings();
   } catch (e) { const el = $("#pErr"); if (el) el.textContent = e.message; }
 }
 

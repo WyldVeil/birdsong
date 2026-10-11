@@ -29,6 +29,7 @@ import re
 import shutil
 import sqlite3
 import struct
+import subprocess
 import threading
 import time
 import urllib.error
@@ -654,8 +655,9 @@ class Pauser:
     until resumed or until the chosen time. Kept in the kv table, so a restart
     stays stopped."""
 
-    def __init__(self, engine, cap, cfg: dict, data: str):
+    def __init__(self, engine, cap, cfg: dict, data: str, listen=None, recorder=None):
         self.engine, self.cap, self.cfg = engine, cap, cfg
+        self.listen, self.recorder = listen, recorder
         self.db = connect(os.path.join(data, "birds.db"))
         self.lock = threading.Lock()
         try:
@@ -704,12 +706,20 @@ class Pauser:
         except (OSError, subprocess.SubprocessError) as e:
             log.warning(f"couldn't {'mute' if on else 'unmute'} the microphone: {e}")
 
+    def _apply_paused(self):
+        self.cap.paused.set()                       # the capture loop lets go of the mic
+        if self.listen is not None:
+            self.listen.blocked = True
+            self.listen.kick_all()
+        if self.recorder is not None and self.recorder.status().get("recording"):
+            self.recorder.stop("stopped because Birdsong was stopped")
+        self._mute(True)
+
     def pause(self, minutes: float) -> dict:
         with self.lock:
             self.paused_until = -1.0 if not minutes or minutes <= 0 else time.time() + float(minutes) * 60
             self._kv("paused_until", self.paused_until)
-            self.cap.paused.set()
-            self._mute(True)
+            self._apply_paused()
         log.info("Birdsong stopped " + ("until resumed" if self.paused_until == -1 else
                  f"until {time.strftime('%H:%M %d %b', time.localtime(self.paused_until))}"))
         return {"ok": True, **self.status()}
@@ -719,6 +729,8 @@ class Pauser:
             self.paused_until = 0.0
             self._kv("paused_until", 0)
             self._mute(False)
+            if self.listen is not None:
+                self.listen.blocked = False
             self.cap.paused.clear()
         log.info(f"Birdsong {why}")
         return {"ok": True, **self.status()}
@@ -727,12 +739,287 @@ class Pauser:
         if self.paused_until > 0 and time.time() >= self.paused_until:
             self.resume("resumed (its stop time passed while it was off)")
         elif self.paused_until != 0:
-            self.cap.paused.set()
-            self._mute(True)
+            self._apply_paused()
             log.info("Birdsong is still stopped (from before the restart)")
         while not stop.wait(2):
             if self.paused_until > 0 and time.time() >= self.paused_until:
                 self.resume("resumed automatically at the chosen time")
+
+
+# ---------------------------------------------------------------- live listening and room recordings
+
+def ffmpeg_exe():
+    """The ffmpeg that ships with Birdsong (the imageio-ffmpeg wheel), else one
+    on PATH, else None."""
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return shutil.which("ffmpeg")
+
+
+# High-pass out house rumble, then even out the level, so a quiet room is
+# audible through earphones without loud sounds blasting.
+LEVELLING = "highpass=f=90,dynaudnorm=f=300:g=11:m=20,alimiter=limit=0.9"
+
+
+def _mp3_encoder(out: str, kbps: int, stdout=None):
+    exe = ffmpeg_exe()
+    if not exe:
+        raise RuntimeError("ffmpeg isn't available")
+    return subprocess.Popen(
+        [exe, "-hide_banner", "-loglevel", "error", "-f", "s16le", "-ar", str(SR), "-ac", "1", "-i", "pipe:0",
+         "-af", LEVELLING, "-c:a", "libmp3lame", "-b:a", f"{int(kbps)}k", "-ar", str(SR), "-f", "mp3"]
+        + (["-flush_packets", "1", "pipe:1"] if out == "pipe:1" else ["-y", out]),
+        stdin=subprocess.PIPE, stdout=stdout if stdout is not None else subprocess.DEVNULL,
+        **({"creationflags": 0x08000000} if os.name == "nt" else {}))     # no console window on Windows
+
+
+class LiveListen:
+    """Admin "Listen live": one MP3 encoder fanned out to the connected
+    listeners. ffmpeg runs only while someone is listening (plus a short grace
+    period), so nothing is encoded or streamed otherwise."""
+
+    GRACE_S = 10
+
+    def __init__(self, ring: Ring, cfg: dict):
+        self.ring, self.cfg = ring, cfg
+        self.lock = threading.Lock()
+        self.clients = []
+        self.proc = None
+        self.started = 0.0
+        self.blocked = False                      # True while Birdsong is stopped
+
+    def count(self) -> int:
+        with self.lock:
+            return len(self.clients)
+
+    def kick_all(self):
+        with self.lock:
+            clients, self.clients = self.clients, []
+        for q in clients:
+            try:
+                q.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                q.put_nowait(None)
+            except queue.Full:
+                pass
+
+    def subscribe(self):
+        """A queue of MP3 chunks (None = the end), or None if not allowed now."""
+        with self.lock:
+            if self.blocked or len(self.clients) >= int(self.cfg.get("live_max_listeners", 3)):
+                return None
+            if self.proc is None:
+                try:
+                    self._start()
+                except (OSError, RuntimeError) as e:
+                    log.warning(f"listen live: couldn't start the encoder: {e}")
+                    return None
+            q = queue.Queue(maxsize=400)          # ~25 s of audio before a stalled client is dropped
+            self.clients.append(q)
+        return q
+
+    def unsubscribe(self, q):
+        with self.lock:
+            if q in self.clients:
+                self.clients.remove(q)
+
+    def _start(self):
+        """Caller holds self.lock."""
+        self.proc = _mp3_encoder("pipe:1", self.cfg.get("live_kbps", 128), stdout=subprocess.PIPE)
+        self.started = time.time()
+        proc = self.proc
+        threading.Thread(target=self._feed, args=(proc,), name="live-feed", daemon=True).start()
+        threading.Thread(target=self._fan_out, args=(proc,), name="live-out", daemon=True).start()
+        log.info("listen live: encoder started")
+
+    def _feed(self, proc):
+        pos = self.ring.total
+        idle_since = None
+        try:
+            while proc.poll() is None:
+                time.sleep(0.1)
+                total = self.ring.total
+                if total > pos:
+                    proc.stdin.write(self.ring.get(max(pos, total - 5 * SR), total).tobytes())
+                    proc.stdin.flush()
+                    pos = total
+                if self.count() == 0:
+                    idle_since = idle_since or time.time()
+                    if time.time() - idle_since > self.GRACE_S:
+                        break
+                else:
+                    idle_since = None
+        except (BrokenPipeError, OSError, ValueError):
+            pass
+        with self.lock:
+            if self.proc is proc:
+                self.proc = None
+        try:
+            proc.stdin.close()
+        except OSError:
+            pass
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        log.info(f"listen live: encoder stopped after {time.time() - self.started:.0f} s")
+
+    def _fan_out(self, proc):
+        while True:
+            chunk = proc.stdout.read1(4096) if hasattr(proc.stdout, "read1") else proc.stdout.read(4096)
+            if not chunk:
+                break
+            with self.lock:
+                clients = list(self.clients)
+            for q in clients:
+                try:
+                    q.put_nowait(chunk)
+                except queue.Full:
+                    self.unsubscribe(q)            # too slow: drop it, the browser reconnects
+                    try:
+                        q.get_nowait()
+                        q.put_nowait(None)
+                    except (queue.Empty, queue.Full):
+                        pass
+        try:
+            proc.stdout.close()
+        except OSError:
+            pass
+        with self.lock:                            # encoder gone: tell any listeners still waiting
+            clients = list(self.clients) if self.proc is None or self.proc is proc else []
+        for q in clients:
+            try:
+                q.put_nowait(None)
+            except queue.Full:
+                pass
+
+
+class RoomRecorder:
+    """Admin "Room recordings": the mic to recordings/rec-YYYYmmdd-HHMMSS.mp3
+    until stopped, the stop time passes, or the disk runs low. The stop time
+    lives in the kv table, so a restart carries on in a new part file."""
+
+    def __init__(self, ring: Ring, cfg: dict, data: str):
+        self.ring, self.cfg, self.data = ring, cfg, data
+        self.dir = os.path.join(data, "recordings")
+        self.lock = threading.Lock()
+        self.proc = self.file = self.feeder = self.halt = None
+        self.started = self.until = 0.0
+        self.db = connect(os.path.join(data, "birds.db"))
+
+    def _kv(self, k, v=None):
+        if v is None:
+            row = self.db.execute("SELECT v FROM kv WHERE k=?", (k,)).fetchone()
+            return row[0] if row else None
+        self.db.execute("INSERT OR REPLACE INTO kv(k, v) VALUES (?,?)", (k, str(v)))
+        self.db.commit()
+
+    def _low(self, factor: float = 1.0) -> bool:
+        return shutil.disk_usage(self.data).free < float(self.cfg.get("rec_min_free_gb", 10)) * 1024 ** 3 * factor
+
+    def status(self) -> dict:
+        with self.lock:
+            on = self.proc is not None
+            return {"recording": on, "started": self.started if on else None, "until": self.until if on else None,
+                    "file": os.path.basename(self.file) if on and self.file else None}
+
+    def start(self, hours: float) -> dict:
+        hours = max(0.05, min(float(hours), float(self.cfg.get("rec_max_hours", 24))))
+        if self._low():
+            return {"ok": False, "error": "Not enough free disk space to record."}
+        with self.lock:
+            if self.proc is not None:              # already on: just move the stop time
+                self.until = time.time() + hours * 3600
+                self._kv("rec_until", self.until)
+                return {"ok": True, "recording": True, "started": self.started, "until": self.until,
+                        "file": os.path.basename(self.file)}
+            try:
+                self._open(time.time() + hours * 3600)
+            except (OSError, RuntimeError) as e:
+                return {"ok": False, "error": f"Couldn't start recording: {e}"}
+        log.info(f"recording: started, stops automatically in {hours:g} h")
+        return {"ok": True, **self.status()}
+
+    def _open(self, until: float):
+        """Caller holds self.lock."""
+        os.makedirs(self.dir, exist_ok=True)
+        self.file = os.path.join(self.dir, time.strftime("rec-%Y%m%d-%H%M%S.mp3"))
+        self.proc = _mp3_encoder(self.file, self.cfg.get("rec_kbps", 256))
+        self.started, self.until = time.time(), until
+        self.halt = threading.Event()
+        self._kv("rec_until", until)
+        self.feeder = threading.Thread(target=self._feed, args=(self.proc, self.halt), name="recorder", daemon=True)
+        self.feeder.start()
+
+    def _end(self, keep_resume: bool, why: str):
+        """Ask the feeder to finish the file (only it touches ffmpeg's stdin)."""
+        with self.lock:
+            proc, feeder, halt, f = self.proc, self.feeder, self.halt, self.file
+            self.proc = None
+            if not keep_resume:
+                self._kv("rec_until", 0)
+        if proc is None:
+            return
+        halt.set()
+        if feeder is not threading.current_thread():
+            feeder.join(timeout=20)
+        size = os.path.getsize(f) / 1e6 if f and os.path.exists(f) else 0
+        log.info(f"recording: {why}, saved {os.path.basename(f)} ({size:.1f} MB)")
+
+    def stop(self, why: str = "stopped") -> dict:
+        self._end(False, why)
+        return {"ok": True, **self.status()}
+
+    def shutdown(self):
+        """Birdsong is closing: finish the file but keep the stop time, so the
+        next start carries on recording in a new part file."""
+        self._end(True, "paused while Birdsong is closed (resumes when it starts)")
+
+    def resume_if_needed(self):
+        try:
+            until = float(self._kv("rec_until") or 0)
+        except ValueError:
+            until = 0
+        if until > time.time():
+            with self.lock:
+                try:
+                    self._open(until)
+                except (OSError, RuntimeError) as e:
+                    log.warning(f"recording: couldn't resume: {e}")
+                    return
+            log.info("recording: carried on after a restart, in a new part file")
+
+    def _feed(self, proc, halt: threading.Event):
+        pos = self.ring.total
+        reason = None
+        try:
+            while not halt.wait(0.2):
+                total = self.ring.total
+                if total > pos:
+                    proc.stdin.write(self.ring.get(max(pos, total - 5 * SR), total).tobytes())
+                    pos = total
+                if time.time() >= self.until:
+                    reason = "reached its stop time"
+                    break
+                if self._low(0.5):
+                    reason = "stopped: the disk is nearly full"
+                    break
+            total = self.ring.total                       # the last moments before stopping
+            if total > pos:
+                proc.stdin.write(self.ring.get(max(pos, total - 5 * SR), total).tobytes())
+        except (BrokenPipeError, OSError, ValueError):
+            pass
+        try:
+            proc.stdin.close()                            # EOF: ffmpeg finishes the file
+            proc.wait(timeout=15)
+        except Exception:
+            proc.kill()
+        if reason:
+            self._end(False, reason)
 
 
 def write_clip(data: str, db, det_id: int, start: float, audio: np.ndarray, low_disk: bool = False):
@@ -1130,7 +1417,7 @@ def birdweather_uploader(data: str, cfg: dict, names: dict, stop: threading.Even
 def analyse_file(data: str, cfg: dict, path: str, start_time: float = None, net: BirdNET = None) -> int:
     """Run a recording through the engine on a simulated clock. Returns the
     number of detections added. Decodes anything libsndfile reads (WAV, FLAC,
-    OGG, MP3); other formats need ffmpeg on PATH."""
+    OGG, MP3); other formats go through ffmpeg (bundled)."""
     import soundfile as sf
     eng = Engine(data, cfg, net=net, live_clock=False)
     before = eng.db.execute("SELECT COUNT(*) FROM detections").fetchone()[0]
@@ -1166,10 +1453,9 @@ def _decode(path: str):
                 yield resample(mono, rate, SR) if rate != SR else mono
         return
     except Exception:
-        if not shutil.which("ffmpeg"):
+        if not ffmpeg_exe():
             raise
-    import subprocess
-    p = subprocess.Popen(["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", path, "-f", "s16le",
+    p = subprocess.Popen([ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-i", path, "-f", "s16le",
                           "-ac", "1", "-ar", str(SR), "pipe:1"], stdout=subprocess.PIPE)
     while True:
         raw = p.stdout.read(SR)
